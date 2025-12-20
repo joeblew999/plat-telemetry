@@ -23,6 +23,7 @@ tasks:
   build:
     desc: Build Hugo site
     dir: '{{.DOCS_SRC}}'
+    deps: [ensure]
     sources:
       - '{{.DOCS_SRC}}/content/**/*'
       - '{{.DOCS_SRC}}/layouts/**/*'
@@ -41,15 +42,11 @@ tasks:
       - hugo server -D --bind 0.0.0.0 --port {{.DOCS_PORT}}
 
   ensure:
-    desc: Ensure Hugo is installed
+    desc: Ensure Hugo is installed (installs via go if missing)
     status:
       - command -v hugo
     cmds:
-      - |
-        echo "Hugo not found. Install with:"
-        echo "  brew install hugo  (macOS)"
-        echo "  go install github.com/gohugoio/hugo@latest  (Go)"
-        exit 1
+      - go install github.com/gohugoio/hugo@latest
 
   bin:download:
     desc: Hugo is a system tool (no-op)
