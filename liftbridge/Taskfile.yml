@@ -1,70 +1,89 @@
 version: '3'
 
 vars:
-  UPSTREAM_REPO: https://github.com/Basekick-Labs/liftbridge.git
-  SRC: '{{.TASKFILE_DIR}}/.src'
-  BIN: '{{.TASKFILE_DIR}}/.bin'
-  DATA: '{{.TASKFILE_DIR}}/.data'
+  LB_UPSTREAM_REPO: https://github.com/Basekick-Labs/liftbridge.git
+  LB_SRC: '{{.TASKFILE_DIR}}/.src'
+  LB_BIN: '{{.TASKFILE_DIR}}/.bin'
+  LB_DATA: '{{.TASKFILE_DIR}}/.data'
+  LB_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download
 
 env:
   GOWORK: off
 
 tasks:
-  default:
-    desc: Show available tasks
-    cmds:
-      - task --list
-
   src:clone:
     desc: Clone the upstream repository
     cmds:
-      - git clone {{.UPSTREAM_REPO}} {{.SRC}}
+      - git clone {{.LB_UPSTREAM_REPO}} {{.LB_SRC}}
     status:
-      - test -d {{.SRC}}
+      - test -d {{.LB_SRC}}
 
   src:update:
     desc: Pull latest changes from upstream
-    dir: '{{.SRC}}'
+    dir: '{{.LB_SRC}}'
     cmds:
       - git pull origin main
 
   build:
     desc: Build liftbridge server
-    dir: '{{.SRC}}'
+    dir: '{{.LB_SRC}}'
     cmds:
-      - mkdir -p {{.BIN}}
-      - go build -o {{.BIN}}/liftbridge .
+      - mkdir -p {{.LB_BIN}}
+      - go build -o {{.LB_BIN}}/liftbridge .
 
   run:
     desc: Run liftbridge server
     cmds:
-      - mkdir -p {{.DATA}}
-      - '{{.BIN}}/liftbridge --data-dir={{.DATA}}'
+      - mkdir -p {{.LB_DATA}}
+      - '{{.LB_BIN}}/liftbridge --data-dir={{.LB_DATA}}'
 
   test:
     desc: Run tests
-    dir: '{{.SRC}}'
+    dir: '{{.LB_SRC}}'
     cmds:
       - go test -v ./...
 
   install:
     desc: Install liftbridge binary
-    dir: '{{.SRC}}'
+    dir: '{{.LB_SRC}}'
     cmds:
       - go install .
 
   deps:
     desc: Download dependencies
-    dir: '{{.SRC}}'
+    dir: '{{.LB_SRC}}'
     cmds:
       - go mod download
 
   clean:
     desc: Clean build artifacts
     cmds:
-      - rm -rf {{.BIN}}
+      - rm -rf {{.LB_BIN}}
 
   clean:data:
     desc: Clean data directory
     cmds:
-      - rm -rf {{.DATA}}
+      - rm -rf {{.LB_DATA}}
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.LB_SRC}}
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.LB_SRC}} {{.LB_BIN}} {{.LB_DATA}}
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.LB_BIN}}
+      - curl -L {{.LB_RELEASE_URL}}/liftbridge-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.LB_BIN}}
+    status:
+      - test -f {{.LB_BIN}}/liftbridge

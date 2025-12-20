@@ -1,29 +1,24 @@
 version: '3'
 
 vars:
-  VERSION: '11.4.0'
-  DOWNLOAD_URL: 'https://dl.grafana.com/oss/release/grafana-{{.VERSION}}.darwin-arm64.tar.gz'
-  BIN: '{{.TASKFILE_DIR}}/.bin'
-  DATA: '{{.TASKFILE_DIR}}/.data'
+  GF_VERSION: '11.4.0'
+  GF_DOWNLOAD_URL: 'https://dl.grafana.com/oss/release/grafana-{{.GF_VERSION}}.darwin-arm64.tar.gz'
+  GF_BIN: '{{.TASKFILE_DIR}}/.bin'
+  GF_DATA: '{{.TASKFILE_DIR}}/.data'
 
 tasks:
-  default:
-    desc: Show available tasks
-    cmds:
-      - task --list
-
   src:clone:
     desc: Download Grafana release
     cmds:
-      - mkdir -p {{.BIN}}
-      - curl -L {{.DOWNLOAD_URL}} | tar xz --strip-components=1 -C {{.BIN}}
+      - mkdir -p {{.GF_BIN}}
+      - curl -L {{.GF_DOWNLOAD_URL}} | tar xz --strip-components=1 -C {{.GF_BIN}}
     status:
-      - test -f {{.BIN}}/bin/grafana-server
+      - test -f {{.GF_BIN}}/bin/grafana-server
 
   src:update:
-    desc: Re-download Grafana (update VERSION var first)
+    desc: Re-download Grafana (update GF_VERSION var first)
     cmds:
-      - rm -rf {{.BIN}}
+      - rm -rf {{.GF_BIN}}
       - task src:clone
 
   build:
@@ -35,10 +30,10 @@ tasks:
     desc: Run Grafana server
     dir: '{{.TASKFILE_DIR}}'
     cmds:
-      - mkdir -p {{.DATA}}/plugins
-      - mkdir -p {{.DATA}}/provisioning/dashboards
-      - mkdir -p {{.DATA}}/provisioning/datasources
-      - '{{.BIN}}/bin/grafana-server --homepath={{.BIN}} --config=grafana.ini cfg:default.paths.data={{.DATA}} cfg:default.paths.plugins={{.DATA}}/plugins cfg:default.paths.provisioning={{.DATA}}/provisioning'
+      - mkdir -p {{.GF_DATA}}/plugins
+      - mkdir -p {{.GF_DATA}}/provisioning/dashboards
+      - mkdir -p {{.GF_DATA}}/provisioning/datasources
+      - '{{.GF_BIN}}/bin/grafana-server --homepath={{.GF_BIN}} --config={{.TASKFILE_DIR}}/grafana.ini cfg:default.paths.data={{.GF_DATA}} cfg:default.paths.plugins={{.GF_DATA}}/plugins cfg:default.paths.provisioning={{.GF_DATA}}/provisioning'
 
   test:
     desc: Check Grafana health
@@ -48,7 +43,7 @@ tasks:
   install:
     desc: Install Grafana plugins
     cmds:
-      - '{{.BIN}}/bin/grafana-cli --pluginsDir={{.DATA}}/plugins plugins install grafana-clock-panel'
+      - '{{.GF_BIN}}/bin/grafana-cli --pluginsDir={{.GF_DATA}}/plugins plugins install grafana-clock-panel'
 
   deps:
     desc: No dependencies for Grafana binary
@@ -58,9 +53,19 @@ tasks:
   clean:
     desc: Clean build artifacts
     cmds:
-      - rm -rf {{.BIN}}
+      - rm -rf {{.GF_BIN}}
 
   clean:data:
     desc: Clean data directory
     cmds:
-      - rm -rf {{.DATA}}
+      - rm -rf {{.GF_DATA}}
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.GF_BIN}}
+
+  clean:all:
+    desc: Clean everything (.bin, .data)
+    cmds:
+      - rm -rf {{.GF_BIN}} {{.GF_DATA}}

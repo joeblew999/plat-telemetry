@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Install Task
+        uses: arduino/setup-task@v2
+
+      - name: Clone sources
+        run: task src:clone
+
+      - name: Build binaries
+        run: task build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          tar -czvf dist/nats-server-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C nats/.bin nats-server
+          tar -czvf dist/liftbridge-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C liftbridge/.bin liftbridge
+          tar -czvf dist/arc-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C arc/.bin arc
+          tar -czvf dist/telegraf-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C telegraf/.bin telegraf
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

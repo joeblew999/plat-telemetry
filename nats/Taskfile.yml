@@ -1,71 +1,90 @@
 version: '3'
 
 vars:
-  UPSTREAM_REPO: https://github.com/nats-io/nats-server.git
-  SRC: '{{.TASKFILE_DIR}}/.src'
-  BIN: '{{.TASKFILE_DIR}}/.bin'
-  DATA: '{{.TASKFILE_DIR}}/.data'
+  NATS_UPSTREAM_REPO: https://github.com/nats-io/nats-server.git
+  NATS_SRC: '{{.TASKFILE_DIR}}/.src'
+  NATS_BIN: '{{.TASKFILE_DIR}}/.bin'
+  NATS_DATA: '{{.TASKFILE_DIR}}/.data'
+  NATS_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download
 
 env:
   GOWORK: off
 
 tasks:
-  default:
-    desc: Show available tasks
-    cmds:
-      - task --list
-
   src:clone:
     desc: Clone the upstream repository
     cmds:
-      - git clone {{.UPSTREAM_REPO}} {{.SRC}}
+      - git clone {{.NATS_UPSTREAM_REPO}} {{.NATS_SRC}}
     status:
-      - test -d {{.SRC}}
+      - test -d {{.NATS_SRC}}
 
   src:update:
     desc: Pull latest changes from upstream
-    dir: '{{.SRC}}'
+    dir: '{{.NATS_SRC}}'
     cmds:
       - git pull origin main
 
   build:
     desc: Build nats-server binary
-    dir: '{{.SRC}}'
+    dir: '{{.NATS_SRC}}'
     cmds:
-      - mkdir -p {{.BIN}}
-      - go build -o {{.BIN}}/nats-server .
+      - mkdir -p {{.NATS_BIN}}
+      - go build -o {{.NATS_BIN}}/nats-server .
 
   run:
     desc: Run nats-server
     dir: '{{.TASKFILE_DIR}}'
     cmds:
-      - mkdir -p {{.DATA}}
-      - '{{.BIN}}/nats-server --config nats.conf --store_dir {{.DATA}}'
+      - mkdir -p {{.NATS_DATA}}
+      - '{{.NATS_BIN}}/nats-server --config nats.conf'
 
   test:
     desc: Run tests
-    dir: '{{.SRC}}'
+    dir: '{{.NATS_SRC}}'
     cmds:
       - go test -v ./...
 
   install:
     desc: Install nats-server binary
-    dir: '{{.SRC}}'
+    dir: '{{.NATS_SRC}}'
     cmds:
       - go install .
 
   deps:
     desc: Download dependencies
-    dir: '{{.SRC}}'
+    dir: '{{.NATS_SRC}}'
     cmds:
       - go mod download
 
   clean:
     desc: Clean build artifacts
     cmds:
-      - rm -rf {{.BIN}}
+      - rm -rf {{.NATS_BIN}}
 
   clean:data:
     desc: Clean data directory
     cmds:
-      - rm -rf {{.DATA}}
+      - rm -rf {{.NATS_DATA}}
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.NATS_SRC}}
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.NATS_SRC}} {{.NATS_BIN}} {{.NATS_DATA}}
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.NATS_BIN}}
+      - curl -L {{.NATS_RELEASE_URL}}/nats-server-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.NATS_BIN}}
+    status:
+      - test -f {{.NATS_BIN}}/nats-server

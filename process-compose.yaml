@@ -42,10 +42,8 @@ processes:
       restart: on_failure
       backoff_seconds: 5
     readiness_probe:
-      http_get:
-        host: 127.0.0.1
-        port: 9292
-        path: /
+      exec:
+        command: nc -z localhost 9292
       initial_delay_seconds: 3
       period_seconds: 5
 

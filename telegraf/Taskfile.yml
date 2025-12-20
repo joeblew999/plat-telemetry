@@ -1,90 +1,109 @@
 version: '3'
 
 vars:
-  UPSTREAM_REPO: https://github.com/Basekick-Labs/telegraf.git
-  SRC: '{{.TASKFILE_DIR}}/.src'
-  BIN: '{{.TASKFILE_DIR}}/.bin'
-  DATA: '{{.TASKFILE_DIR}}/.data'
+  TG_UPSTREAM_REPO: https://github.com/Basekick-Labs/telegraf.git
+  TG_SRC: '{{.TASKFILE_DIR}}/.src'
+  TG_BIN: '{{.TASKFILE_DIR}}/.bin'
+  TG_DATA: '{{.TASKFILE_DIR}}/.data'
+  TG_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download
 
 env:
   GOWORK: off
 
 tasks:
-  default:
-    desc: Show available tasks
-    cmds:
-      - task --list
-
   src:clone:
     desc: Clone the upstream repository
     cmds:
-      - git clone {{.UPSTREAM_REPO}} {{.SRC}}
+      - git clone {{.TG_UPSTREAM_REPO}} {{.TG_SRC}}
     status:
-      - test -d {{.SRC}}
+      - test -d {{.TG_SRC}}
 
   src:update:
     desc: Pull latest changes from upstream
-    dir: '{{.SRC}}'
+    dir: '{{.TG_SRC}}'
     cmds:
       - git pull origin master
 
   build:
     desc: Build telegraf binary
-    dir: '{{.SRC}}'
+    dir: '{{.TG_SRC}}'
     cmds:
-      - mkdir -p {{.BIN}}
+      - mkdir -p {{.TG_BIN}}
       - make build
-      - cp telegraf {{.BIN}}/
+      - cp telegraf {{.TG_BIN}}/
 
   run:
     desc: Run telegraf with config
     dir: '{{.TASKFILE_DIR}}'
     cmds:
-      - mkdir -p {{.DATA}}
-      - '{{.BIN}}/telegraf --config telegraf.conf'
+      - mkdir -p {{.TG_DATA}}
+      - '{{.TG_BIN}}/telegraf --config telegraf.conf'
 
   test:
     desc: Run tests
-    dir: '{{.SRC}}'
+    dir: '{{.TG_SRC}}'
     cmds:
       - make test
 
   test:short:
     desc: Run short tests
-    dir: '{{.SRC}}'
+    dir: '{{.TG_SRC}}'
     cmds:
       - go test -short ./...
 
   install:
     desc: Install telegraf binary
-    dir: '{{.SRC}}'
+    dir: '{{.TG_SRC}}'
     cmds:
       - make install
 
   deps:
     desc: Download dependencies
-    dir: '{{.SRC}}'
+    dir: '{{.TG_SRC}}'
     cmds:
       - go mod download
 
   config:
     desc: Generate sample config
     cmds:
-      - '{{.BIN}}/telegraf config > telegraf.sample.conf'
+      - '{{.TG_BIN}}/telegraf config > telegraf.sample.conf'
 
   plugins:
     desc: List available plugins
     cmds:
-      - '{{.BIN}}/telegraf --input-list'
-      - '{{.BIN}}/telegraf --output-list'
+      - '{{.TG_BIN}}/telegraf --input-list'
+      - '{{.TG_BIN}}/telegraf --output-list'
 
   clean:
     desc: Clean build artifacts
     cmds:
-      - rm -rf {{.BIN}}
+      - rm -rf {{.TG_BIN}}
       - rm -f telegraf.sample.conf
 
   clean:data:
     desc: Clean data directory
     cmds:
-      - rm -rf {{.DATA}}
+      - rm -rf {{.TG_DATA}}
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.TG_SRC}}
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.TG_SRC}} {{.TG_BIN}} {{.TG_DATA}}
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.TG_BIN}}
+      - curl -L {{.TG_RELEASE_URL}}/telegraf-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.TG_BIN}}
+    status:
+      - test -f {{.TG_BIN}}/telegraf

@@ -1,77 +1,96 @@
 version: '3'
 
 vars:
-  UPSTREAM_REPO: https://github.com/basekick-labs/arc.git
-  SRC: '{{.TASKFILE_DIR}}/.src'
-  BIN: '{{.TASKFILE_DIR}}/.bin'
-  DATA: '{{.TASKFILE_DIR}}/.data'
+  ARC_UPSTREAM_REPO: https://github.com/basekick-labs/arc.git
+  ARC_SRC: '{{.TASKFILE_DIR}}/.src'
+  ARC_BIN: '{{.TASKFILE_DIR}}/.bin'
+  ARC_DATA: '{{.TASKFILE_DIR}}/.data'
+  ARC_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download
 
 env:
   GOWORK: off
 
 tasks:
-  default:
-    desc: Show available tasks
-    cmds:
-      - task --list
-
   src:clone:
     desc: Clone the upstream repository
     cmds:
-      - git clone {{.UPSTREAM_REPO}} {{.SRC}}
+      - git clone {{.ARC_UPSTREAM_REPO}} {{.ARC_SRC}}
     status:
-      - test -d {{.SRC}}
+      - test -d {{.ARC_SRC}}
 
   src:update:
     desc: Pull latest changes from upstream
-    dir: '{{.SRC}}'
+    dir: '{{.ARC_SRC}}'
     cmds:
       - git pull origin main
 
   build:
     desc: Build arc binary
-    dir: '{{.SRC}}'
+    dir: '{{.ARC_SRC}}'
     cmds:
-      - mkdir -p {{.BIN}}
-      - go build -o {{.BIN}}/arc ./cmd/arc
+      - mkdir -p {{.ARC_BIN}}
+      - go build -o {{.ARC_BIN}}/arc ./cmd/arc
 
   run:
     desc: Run arc server
     dir: '{{.TASKFILE_DIR}}'
     cmds:
-      - mkdir -p {{.DATA}}
-      - '{{.BIN}}/arc --config arc.toml'
+      - mkdir -p {{.ARC_DATA}}
+      - '{{.ARC_BIN}}/arc --config arc.toml'
 
   test:
     desc: Run tests
-    dir: '{{.SRC}}'
+    dir: '{{.ARC_SRC}}'
     cmds:
       - go test -v ./...
 
   bench:
     desc: Run benchmarks
-    dir: '{{.SRC}}'
+    dir: '{{.ARC_SRC}}'
     cmds:
       - go test -bench=. -benchmem ./...
 
   install:
     desc: Install arc binary
-    dir: '{{.SRC}}'
+    dir: '{{.ARC_SRC}}'
     cmds:
       - go install ./cmd/arc
 
   deps:
     desc: Download dependencies
-    dir: '{{.SRC}}'
+    dir: '{{.ARC_SRC}}'
     cmds:
       - go mod download
 
   clean:
     desc: Clean build artifacts
     cmds:
-      - rm -rf {{.BIN}}
+      - rm -rf {{.ARC_BIN}}
 
   clean:data:
     desc: Clean data directory
     cmds:
-      - rm -rf {{.DATA}}
+      - rm -rf {{.ARC_DATA}}
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.ARC_SRC}}
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.ARC_SRC}} {{.ARC_BIN}} {{.ARC_DATA}}
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.ARC_BIN}}
+      - curl -L {{.ARC_RELEASE_URL}}/arc-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.ARC_BIN}}
+    status:
+      - test -f {{.ARC_BIN}}/arc

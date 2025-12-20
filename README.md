@@ -9,12 +9,10 @@ Announcement: https://basekick.net/blog/liftbridge-joins-basekick-labs
 ## Architecture
 
 ```
-┌─────────┐     ┌────────────┐     ┌─────┐     ┌──────────┐     ┌─────────┐
-│  NATS   │────▶│ Liftbridge │────▶│ Arc │◀────│ Telegraf │     │ Grafana │
-│ :4222   │     │   :9292    │     │:8000│     │          │     │  :3000  │
-└─────────┘     └────────────┘     └─────┘     └──────────┘     └─────────┘
-                                      │                              │
-                                      └──────────────────────────────┘
+┌──────────┐     ┌─────────┐     ┌────────────┐     ┌─────┐     ┌─────────┐
+│ Telegraf │────▶│  NATS   │────▶│ Liftbridge │────▶│ Arc │────▶│ Grafana │
+│          │     │ :4222   │     │   :9292    │     │:8000│     │  :3000  │
+└──────────┘     └─────────┘     └────────────┘     └─────┘     └─────────┘
 ```
 
 **Ports:**
@@ -47,7 +45,9 @@ https://github.com/Basekick-Labs/telegraf
 
 Agent for collecting, processing, aggregating, and writing metrics, logs, and other arbitrary data.
 
-## Doc
+## Continuous Queries
+
+Arc supports automatic downsampling via continuous queries - ~400x storage compression (20GB raw → 50MB aggregated).
 
 https://docs.basekick.net/arc/data-lifecycle/continuous-queries
 

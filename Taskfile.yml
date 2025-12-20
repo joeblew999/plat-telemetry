@@ -1,5 +1,9 @@
 version: '3'
 
+vars:
+  RELEASE_REPO: joeblew999/plat-telemetry
+  RELEASE_VERSION: latest
+
 includes:
   nats: ./nats
   liftbridge: ./liftbridge
@@ -39,6 +43,15 @@ tasks:
       - task arc:build
       - task telegraf:build
       - task grafana:build
+
+  bin:download:
+    desc: Download pre-built binaries from release (for users)
+    cmds:
+      - task nats:bin:download
+      - task liftbridge:bin:download
+      - task arc:bin:download
+      - task telegraf:bin:download
+      - task grafana:src:clone
 
   run:
     desc: Run all services with Process Compose
@@ -88,3 +101,56 @@ tasks:
       - task arc:clean:data
       - task telegraf:clean:data
       - task grafana:clean:data
+
+  clean:src:
+    desc: Clean all source directories
+    cmds:
+      - task nats:clean:src
+      - task liftbridge:clean:src
+      - task arc:clean:src
+      - task telegraf:clean:src
+      - task grafana:clean:src
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - task nats:clean:all
+      - task liftbridge:clean:all
+      - task arc:clean:all
+      - task telegraf:clean:all
+      - task grafana:clean:all
+
+  install:deps:
+    desc: Install required tools (hugo, gh, process-compose)
+    cmds:
+      - |
+        if ! command -v hugo &> /dev/null; then
+          echo "Installing hugo..."
+          {{if eq OS "darwin"}}brew install hugo{{else}}go install github.com/gohugoio/hugo@latest{{end}}
+        fi
+      - |
+        if ! command -v gh &> /dev/null; then
+          echo "Installing gh..."
+          {{if eq OS "darwin"}}brew install gh{{else}}go install github.com/cli/cli/v2/cmd/gh@latest{{end}}
+        fi
+      - |
+        if ! command -v process-compose &> /dev/null; then
+          echo "Installing process-compose..."
+          {{if eq OS "darwin"}}brew install process-compose{{else}}go install github.com/F1bonacc1/process-compose@latest{{end}}
+        fi
+    status:
+      - command -v hugo
+      - command -v gh
+      - command -v process-compose
+
+  docs:dev:
+    desc: Run Hugo dev server
+    dir: docs
+    cmds:
+      - hugo server -D
+
+  docs:build:
+    desc: Build Hugo site
+    dir: docs
+    cmds:
+      - hugo --minify
