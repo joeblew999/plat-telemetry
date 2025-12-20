@@ -28,3 +28,14 @@ Use `GOWORK: off` for all Go builds.
 ## Process Compose
 
 Keep the process compose file ordered alphabetically.
+
+## CI Philosophy
+
+**Taskfiles are the source of truth.** CI workflows should be thin wrappers that just call `task` commands.
+
+- NO logic in CI workflows - put it in Taskfiles
+- Test locally with same commands CI uses
+- Use `:one` variants for fast iteration: `task src:clone:one SUBSYSTEM=nats`
+- CI just runs: `task src:clone && task bin:build`
+
+This ensures DEV, CI, and OPS all use identical commands.
