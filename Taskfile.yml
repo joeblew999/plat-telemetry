@@ -80,9 +80,9 @@ tasks:
       - process-compose up
 
   run:fg:
-    desc: Run all services in foreground
+    desc: Run all services in foreground (no TUI)
     cmds:
-      - process-compose up -f process-compose.yaml
+      - process-compose up -t=false
 
   stop:
     desc: Stop all services
