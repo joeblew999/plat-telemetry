@@ -3,17 +3,111 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+
+    runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
           cache: false
-      - run: go install github.com/go-task/task/v3/cmd/task@latest
-      - run: task src:clone
-      - run: task bin:build
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Build
+        run: task src:clone && task bin:build
+
+      - name: Package binaries
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          mkdir -p dist
+          tar -czvf dist/nats-server-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C nats/.bin nats-server
+          tar -czvf dist/liftbridge-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C liftbridge/.bin liftbridge
+          tar -czvf dist/arc-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C arc/.bin arc
+          tar -czvf dist/telegraf-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C telegraf/.bin telegraf
+
+      - name: Upload artifacts
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+  pages:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: 'latest'
+          extended: true
+
+      - name: Build docs
+        run: task docs:build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.bin
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

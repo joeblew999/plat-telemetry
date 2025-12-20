@@ -15,6 +15,8 @@
 
 **Run once, react to changes.** Start services with `task run` in one terminal. In another terminal, run `task build` (dev) or `task bin:download` (user) - binaries change, PC detects and restarts. All idempotent - run any command any time.
 
+**Docs are a subsystem too.** Hugo docs live in `docs/`, run with `task docs:dev`. Same philosophy - edit markdown, Hugo hot-reloads. Treat docs like code.
+
 ## Conventions
 
 Directories per subsystem:

@@ -10,6 +10,7 @@ includes:
   arc: ./arc
   telegraf: ./telegraf
   grafana: ./grafana
+  docs: ./docs
 
 tasks:
   default:
@@ -164,17 +165,6 @@ tasks:
       - command -v gh
       - command -v process-compose
 
-  docs:dev:
-    desc: Run Hugo dev server
-    dir: docs
-    cmds:
-      - hugo server -D
-
-  docs:build:
-    desc: Build Hugo site
-    dir: docs
-    cmds:
-      - hugo --minify
 
   manifest:
     desc: Show pinned versions vs installed versions

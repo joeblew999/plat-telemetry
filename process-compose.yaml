@@ -19,6 +19,20 @@ processes:
       initial_delay_seconds: 3
       period_seconds: 5
 
+  docs:
+    command: task docs:run
+    working_dir: .
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 1313
+        path: /
+      initial_delay_seconds: 2
+      period_seconds: 5
+
   grafana:
     command: task grafana:run
     working_dir: .
