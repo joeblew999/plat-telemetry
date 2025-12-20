@@ -162,6 +162,27 @@ tasks:
     cmds:
       - hugo --minify
 
+  manifest:
+    desc: Show subsystem versions from cloned sources
+    cmds:
+      - |
+        echo "=== Subsystem Manifest ==="
+        echo ""
+        for sub in nats liftbridge arc telegraf; do
+          if [ -d "$sub/.src/.git" ]; then
+            commit=$(git -C "$sub/.src" rev-parse --short HEAD 2>/dev/null || echo "n/a")
+            branch=$(git -C "$sub/.src" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "n/a")
+            echo "$sub: $branch @ $commit"
+          else
+            echo "$sub: not cloned"
+          fi
+        done
+        if [ -f "grafana/.bin/grafana" ]; then
+          echo "grafana: $(grafana/.bin/grafana --version 2>/dev/null | head -1 || echo 'installed')"
+        else
+          echo "grafana: not downloaded"
+        fi
+
   github:pages:
     desc: Enable GitHub Pages (idempotent)
     cmds:

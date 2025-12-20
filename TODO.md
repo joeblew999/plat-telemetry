@@ -20,7 +20,7 @@
 
 ---
 
-I suggest you introduce a manifest for each sub system, so you can track versions, so that when it flows through the whole system, you know what version you have.
+~~I suggest you introduce a manifest for each sub system, so you can track versions, so that when it flows through the whole system, you know what version you have.~~ **DONE** - Added `manifest.yaml` with upstream info + `task manifest` to show current versions.
 
 ---
 

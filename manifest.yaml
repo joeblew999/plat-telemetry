@@ -1,0 +1,28 @@
+# Subsystem Manifest
+# Tracks upstream sources and versions for all subsystems
+
+subsystems:
+  nats:
+    upstream: https://github.com/nats-io/nats-server
+    branch: main
+    description: High-performance messaging system
+
+  liftbridge:
+    upstream: https://github.com/liftbridge-io/liftbridge
+    branch: master
+    description: Lightweight, fault-tolerant message streams
+
+  arc:
+    upstream: https://github.com/basekick-labs/arc
+    branch: main
+    description: Telemetry storage with DuckDB
+
+  telegraf:
+    upstream: https://github.com/Basekick-Labs/telegraf
+    branch: master
+    description: Plugin-driven metrics collection agent
+
+  grafana:
+    upstream: https://github.com/grafana/grafana
+    version: "11.4.0"
+    description: Observability and visualization platform
