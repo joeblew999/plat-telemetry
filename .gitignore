@@ -1,0 +1,26 @@
+# Source directories (cloned from upstream)
+**/.src/
+
+# Binary directories
+**/.bin/
+
+# Data directories
+**/.data/
+
+# Build artifacts
+bin/
+coverage.out
+coverage.html
+
+# Config files with secrets
+*.local.toml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,90 @@
+version: '3'
+
+vars:
+  UPSTREAM_REPO: https://github.com/Basekick-Labs/telegraf.git
+  SRC: '{{.TASKFILE_DIR}}/.src'
+  BIN: '{{.TASKFILE_DIR}}/.bin'
+  DATA: '{{.TASKFILE_DIR}}/.data'
+
+env:
+  GOWORK: off
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  src:clone:
+    desc: Clone the upstream repository
+    cmds:
+      - git clone {{.UPSTREAM_REPO}} {{.SRC}}
+    status:
+      - test -d {{.SRC}}
+
+  src:update:
+    desc: Pull latest changes from upstream
+    dir: '{{.SRC}}'
+    cmds:
+      - git pull origin master
+
+  build:
+    desc: Build telegraf binary
+    dir: '{{.SRC}}'
+    cmds:
+      - mkdir -p {{.BIN}}
+      - make build
+      - cp telegraf {{.BIN}}/
+
+  run:
+    desc: Run telegraf with config
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - mkdir -p {{.DATA}}
+      - '{{.BIN}}/telegraf --config telegraf.conf'
+
+  test:
+    desc: Run tests
+    dir: '{{.SRC}}'
+    cmds:
+      - make test
+
+  test:short:
+    desc: Run short tests
+    dir: '{{.SRC}}'
+    cmds:
+      - go test -short ./...
+
+  install:
+    desc: Install telegraf binary
+    dir: '{{.SRC}}'
+    cmds:
+      - make install
+
+  deps:
+    desc: Download dependencies
+    dir: '{{.SRC}}'
+    cmds:
+      - go mod download
+
+  config:
+    desc: Generate sample config
+    cmds:
+      - '{{.BIN}}/telegraf config > telegraf.sample.conf'
+
+  plugins:
+    desc: List available plugins
+    cmds:
+      - '{{.BIN}}/telegraf --input-list'
+      - '{{.BIN}}/telegraf --output-list'
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BIN}}
+      - rm -f telegraf.sample.conf
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.DATA}}

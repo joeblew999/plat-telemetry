@@ -1,0 +1,77 @@
+version: '3'
+
+vars:
+  UPSTREAM_REPO: https://github.com/basekick-labs/arc.git
+  SRC: '{{.TASKFILE_DIR}}/.src'
+  BIN: '{{.TASKFILE_DIR}}/.bin'
+  DATA: '{{.TASKFILE_DIR}}/.data'
+
+env:
+  GOWORK: off
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  src:clone:
+    desc: Clone the upstream repository
+    cmds:
+      - git clone {{.UPSTREAM_REPO}} {{.SRC}}
+    status:
+      - test -d {{.SRC}}
+
+  src:update:
+    desc: Pull latest changes from upstream
+    dir: '{{.SRC}}'
+    cmds:
+      - git pull origin main
+
+  build:
+    desc: Build arc binary
+    dir: '{{.SRC}}'
+    cmds:
+      - mkdir -p {{.BIN}}
+      - go build -o {{.BIN}}/arc ./cmd/arc
+
+  run:
+    desc: Run arc server
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - mkdir -p {{.DATA}}
+      - '{{.BIN}}/arc --config arc.toml'
+
+  test:
+    desc: Run tests
+    dir: '{{.SRC}}'
+    cmds:
+      - go test -v ./...
+
+  bench:
+    desc: Run benchmarks
+    dir: '{{.SRC}}'
+    cmds:
+      - go test -bench=. -benchmem ./...
+
+  install:
+    desc: Install arc binary
+    dir: '{{.SRC}}'
+    cmds:
+      - go install ./cmd/arc
+
+  deps:
+    desc: Download dependencies
+    dir: '{{.SRC}}'
+    cmds:
+      - go mod download
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BIN}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.DATA}}

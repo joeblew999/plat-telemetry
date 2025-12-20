@@ -1,0 +1,40 @@
+version: "0.5"
+
+processes:
+  liftbridge:
+    command: task liftbridge:run
+    working_dir: .
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 9292
+        path: /
+      initial_delay_seconds: 3
+      period_seconds: 5
+
+  arc:
+    command: task arc:run
+    working_dir: .
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    readiness_probe:
+      http_get:
+        host: 127.0.0.1
+        port: 8000
+        path: /health
+      initial_delay_seconds: 3
+      period_seconds: 5
+
+  telegraf:
+    command: task telegraf:run
+    working_dir: .
+    depends_on:
+      arc:
+        condition: process_healthy
+    availability:
+      restart: on_failure
+      backoff_seconds: 5

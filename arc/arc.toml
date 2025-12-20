@@ -1,0 +1,75 @@
+# Arc Configuration
+# https://docs.basekick.net/arc/configuration/overview
+
+# Server Configuration
+[server]
+port = 8000
+tls_enabled = false
+# tls_cert_file = "/path/to/cert.pem"
+# tls_key_file = "/path/to/key.pem"
+max_payload_size = "1GB"
+
+# Logging
+[log]
+level = "info"        # debug, info, warn, error
+format = "console"    # json or console
+
+# Database (DuckDB)
+[database]
+max_connections = 28      # 2x CPU cores
+memory_limit = "8GB"      # ~50% system RAM
+thread_count = 14         # CPU cores
+enable_wal = false
+
+# Storage Backend
+[storage]
+backend = "local"         # local, s3, minio, azure
+local_path = "./.data/arc"
+
+# Ingestion Configuration
+[ingest]
+max_buffer_size = 50000      # records before flush
+max_buffer_age_ms = 5000     # milliseconds before force flush
+
+# Compaction Settings
+[compaction]
+enabled = true
+hourly_enabled = true
+hourly_min_age_hours = 0
+hourly_min_files = 5
+
+# Authentication
+[auth]
+enabled = false
+db_path = "./.data/arc_auth.db"
+cache_ttl = 30
+max_cache_size = 1000
+
+# Delete Operations
+[delete]
+enabled = true
+confirmation_threshold = 10000
+max_rows_per_delete = 1000000
+
+# Retention Policies
+[retention]
+enabled = true
+db_path = "./.data/arc_retention.db"
+
+# Continuous Queries
+[continuous_query]
+enabled = true
+db_path = "./.data/arc_cq.db"
+
+# Write-Ahead Log (WAL)
+[wal]
+enabled = false
+directory = "./.data/wal"
+sync_mode = "fdatasync"
+max_size_mb = 500
+max_age_seconds = 3600
+
+# Metrics Collection
+[metrics]
+timeseries_retention_minutes = 60
+timeseries_interval_seconds = 10

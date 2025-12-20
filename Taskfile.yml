@@ -1,0 +1,76 @@
+version: '3'
+
+includes:
+  liftbridge: ./liftbridge
+  arc: ./arc
+  telegraf: ./telegraf
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  src:clone:
+    desc: Clone all subsystem repositories
+    cmds:
+      - task liftbridge:src:clone
+      - task arc:src:clone
+      - task telegraf:src:clone
+
+  src:update:
+    desc: Update all subsystem repositories
+    cmds:
+      - task liftbridge:src:update
+      - task arc:src:update
+      - task telegraf:src:update
+
+  build:
+    desc: Build all subsystems
+    cmds:
+      - task liftbridge:build
+      - task arc:build
+      - task telegraf:build
+
+  run:
+    desc: Run all services with Process Compose
+    cmds:
+      - process-compose up
+
+  run:fg:
+    desc: Run all services in foreground
+    cmds:
+      - process-compose up -f process-compose.yaml
+
+  stop:
+    desc: Stop all services
+    cmds:
+      - process-compose down
+
+  test:
+    desc: Run tests for all subsystems
+    cmds:
+      - task liftbridge:test
+      - task arc:test
+      - task telegraf:test
+
+  deps:
+    desc: Download dependencies for all subsystems
+    cmds:
+      - task liftbridge:deps
+      - task arc:deps
+      - task telegraf:deps
+
+  clean:
+    desc: Clean all build artifacts
+    cmds:
+      - task liftbridge:clean
+      - task arc:clean
+      - task telegraf:clean
+
+  clean:data:
+    desc: Clean all data directories
+    cmds:
+      - task liftbridge:clean:data
+      - task arc:clean:data
+      - task telegraf:clean:data
