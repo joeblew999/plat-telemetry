@@ -41,10 +41,31 @@ jobs:
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@latest
 
+      - name: Get upstream commit SHAs
+        id: versions
+        run: |
+          echo "nats=$(git ls-remote https://github.com/nats-io/nats-server.git v2.10.24 | cut -f1)" >> $GITHUB_OUTPUT
+          echo "liftbridge=$(git ls-remote https://github.com/Basekick-Labs/liftbridge.git master | cut -f1)" >> $GITHUB_OUTPUT
+          echo "arc=$(git ls-remote https://github.com/basekick-labs/arc.git main | cut -f1)" >> $GITHUB_OUTPUT
+          echo "telegraf=$(git ls-remote https://github.com/Basekick-Labs/telegraf.git master | cut -f1)" >> $GITHUB_OUTPUT
+
+      - name: Cache binaries
+        id: cache-bins
+        uses: actions/cache@v4
+        with:
+          path: |
+            nats/.bin
+            liftbridge/.bin
+            arc/.bin
+            telegraf/.bin
+          key: bins-${{ matrix.goos }}-${{ matrix.goarch }}-${{ steps.versions.outputs.nats }}-${{ steps.versions.outputs.liftbridge }}-${{ steps.versions.outputs.arc }}-${{ steps.versions.outputs.telegraf }}
+
       - name: Clone sources
+        if: steps.cache-bins.outputs.cache-hit != 'true'
         run: task ci:src:clone
 
       - name: Build binaries
+        if: steps.cache-bins.outputs.cache-hit != 'true'
         run: task ci:build
 
       - name: Package binaries
