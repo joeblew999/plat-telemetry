@@ -1,3 +1,3 @@
 # CLAUDE
 
-Keep the process compose file ordered alphaetically. 
+Keep the process compose file ordered alphabetically.

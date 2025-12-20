@@ -4,8 +4,24 @@ Telemetry collection
 
 https://github.com/joeblew999/plat-telemetry
 
-Annoucement: https://basekick.net/blog/liftbridge-joins-basekick-labs
+Announcement: https://basekick.net/blog/liftbridge-joins-basekick-labs
 
+## Architecture
+
+```
+┌─────────┐     ┌────────────┐     ┌─────┐     ┌──────────┐     ┌─────────┐
+│  NATS   │────▶│ Liftbridge │────▶│ Arc │◀────│ Telegraf │     │ Grafana │
+│ :4222   │     │   :9292    │     │:8000│     │          │     │  :3000  │
+└─────────┘     └────────────┘     └─────┘     └──────────┘     └─────────┘
+                                      │                              │
+                                      └──────────────────────────────┘
+```
+
+**Ports:**
+- NATS: 4222 (clients), 8222 (monitoring)
+- Liftbridge: 9292
+- Arc: 8000
+- Grafana: 3000
 
 ---
 
