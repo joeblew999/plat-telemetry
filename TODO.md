@@ -4,7 +4,7 @@
 
 ---
 
-arc needs GO TAG for duckdb variant.
+~~arc needs GO TAG for duckdb variant.~~ **DONE** - DuckDB Go v2 uses pre-built platform-specific bindings (linux-amd64, darwin-arm64). CGO_ENABLED=1 is automatic on GitHub runners. Optional: add `-tags=duckdb_arrow` for Arrow interface support if needed.
 
 ---
 

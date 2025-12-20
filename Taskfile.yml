@@ -44,6 +44,13 @@ tasks:
       - task telegraf:build
       - task grafana:build
 
+  "bin:build:one":
+    desc: "Build a single subsystem (usage: task bin:build:one SUBSYSTEM=nats)"
+    vars:
+      SUBSYSTEM: '{{.SUBSYSTEM | default "nats"}}'
+    cmds:
+      - task {{.SUBSYSTEM}}:build
+
   bin:download:
     desc: Download pre-built binaries from release (for users)
     cmds:

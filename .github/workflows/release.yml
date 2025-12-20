@@ -34,8 +34,21 @@ jobs:
       - name: Clone sources
         run: task src:clone
 
-      - name: Build binaries
-        run: task bin:build
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-mod-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-mod-
+
+      - name: Build binaries (parallel)
+        run: |
+          task nats:build &
+          task liftbridge:build &
+          task arc:build &
+          task telegraf:build &
+          wait
 
       - name: Package binaries
         run: |
