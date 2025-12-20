@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   TG_UPSTREAM_REPO: https://github.com/Basekick-Labs/telegraf.git
+  TG_VERSION: '{{.TG_VERSION | default "master"}}'
   TG_SRC: '{{.TASKFILE_DIR}}/.src'
   TG_BIN: '{{.TASKFILE_DIR}}/.bin'
   TG_DATA: '{{.TASKFILE_DIR}}/.data'
@@ -12,17 +13,18 @@ env:
 
 tasks:
   src:clone:
-    desc: Clone the upstream repository
+    desc: Clone the upstream repository at pinned version
     cmds:
-      - git clone {{.TG_UPSTREAM_REPO}} {{.TG_SRC}}
+      - git clone --branch {{.TG_VERSION}} --depth 1 {{.TG_UPSTREAM_REPO}} {{.TG_SRC}}
     status:
       - test -d {{.TG_SRC}}
 
   src:update:
-    desc: Pull latest changes from upstream
+    desc: Fetch and checkout pinned version
     dir: '{{.TG_SRC}}'
     cmds:
-      - git pull origin master
+      - git fetch origin {{.TG_VERSION}}
+      - git checkout {{.TG_VERSION}}
 
   build:
     desc: Build telegraf binary

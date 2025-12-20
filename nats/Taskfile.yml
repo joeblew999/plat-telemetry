@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   NATS_UPSTREAM_REPO: https://github.com/nats-io/nats-server.git
+  NATS_VERSION: '{{.NATS_VERSION | default "v2.10.24"}}'
   NATS_SRC: '{{.TASKFILE_DIR}}/.src'
   NATS_BIN: '{{.TASKFILE_DIR}}/.bin'
   NATS_DATA: '{{.TASKFILE_DIR}}/.data'
@@ -12,17 +13,18 @@ env:
 
 tasks:
   src:clone:
-    desc: Clone the upstream repository
+    desc: Clone the upstream repository at pinned version
     cmds:
-      - git clone {{.NATS_UPSTREAM_REPO}} {{.NATS_SRC}}
+      - git clone --branch {{.NATS_VERSION}} --depth 1 {{.NATS_UPSTREAM_REPO}} {{.NATS_SRC}}
     status:
       - test -d {{.NATS_SRC}}
 
   src:update:
-    desc: Pull latest changes from upstream
+    desc: Fetch and checkout pinned version
     dir: '{{.NATS_SRC}}'
     cmds:
-      - git pull origin main
+      - git fetch --tags
+      - git checkout {{.NATS_VERSION}}
 
   build:
     desc: Build nats-server binary

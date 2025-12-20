@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   LB_UPSTREAM_REPO: https://github.com/Basekick-Labs/liftbridge.git
+  LB_VERSION: '{{.LB_VERSION | default "v1.10.0"}}'
   LB_SRC: '{{.TASKFILE_DIR}}/.src'
   LB_BIN: '{{.TASKFILE_DIR}}/.bin'
   LB_DATA: '{{.TASKFILE_DIR}}/.data'
@@ -12,17 +13,18 @@ env:
 
 tasks:
   src:clone:
-    desc: Clone the upstream repository
+    desc: Clone the upstream repository at pinned version
     cmds:
-      - git clone {{.LB_UPSTREAM_REPO}} {{.LB_SRC}}
+      - git clone --branch {{.LB_VERSION}} --depth 1 {{.LB_UPSTREAM_REPO}} {{.LB_SRC}}
     status:
       - test -d {{.LB_SRC}}
 
   src:update:
-    desc: Pull latest changes from upstream
+    desc: Fetch and checkout pinned version
     dir: '{{.LB_SRC}}'
     cmds:
-      - git pull origin main
+      - git fetch --tags
+      - git checkout {{.LB_VERSION}}
 
   build:
     desc: Build liftbridge server

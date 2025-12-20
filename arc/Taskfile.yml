@@ -2,6 +2,7 @@ version: '3'
 
 vars:
   ARC_UPSTREAM_REPO: https://github.com/basekick-labs/arc.git
+  ARC_VERSION: '{{.ARC_VERSION | default "main"}}'
   ARC_SRC: '{{.TASKFILE_DIR}}/.src'
   ARC_BIN: '{{.TASKFILE_DIR}}/.bin'
   ARC_DATA: '{{.TASKFILE_DIR}}/.data'
@@ -12,17 +13,18 @@ env:
 
 tasks:
   src:clone:
-    desc: Clone the upstream repository
+    desc: Clone the upstream repository at pinned version
     cmds:
-      - git clone {{.ARC_UPSTREAM_REPO}} {{.ARC_SRC}}
+      - git clone --branch {{.ARC_VERSION}} --depth 1 {{.ARC_UPSTREAM_REPO}} {{.ARC_SRC}}
     status:
       - test -d {{.ARC_SRC}}
 
   src:update:
-    desc: Pull latest changes from upstream
+    desc: Fetch and checkout pinned version
     dir: '{{.ARC_SRC}}'
     cmds:
-      - git pull origin main
+      - git fetch origin {{.ARC_VERSION}}
+      - git checkout {{.ARC_VERSION}}
 
   build:
     desc: Build arc binary

@@ -1,28 +1,26 @@
 # Subsystem Manifest
-# Tracks upstream sources and versions for all subsystems
+# Pin versions here - Taskfiles read these values
+
+# plat-telemetry release version
+version: "0.1.1"
 
 subsystems:
   nats:
+    version: "v2.10.24"
     upstream: https://github.com/nats-io/nats-server
-    branch: main
-    description: High-performance messaging system
 
   liftbridge:
+    version: "v1.10.0"
     upstream: https://github.com/liftbridge-io/liftbridge
-    branch: master
-    description: Lightweight, fault-tolerant message streams
 
   arc:
+    version: "main"  # no releases yet
     upstream: https://github.com/basekick-labs/arc
-    branch: main
-    description: Telemetry storage with DuckDB
 
   telegraf:
+    version: "master"  # using fork
     upstream: https://github.com/Basekick-Labs/telegraf
-    branch: master
-    description: Plugin-driven metrics collection agent
 
   grafana:
-    upstream: https://github.com/grafana/grafana
     version: "11.4.0"
-    description: Observability and visualization platform
+    upstream: https://github.com/grafana/grafana
