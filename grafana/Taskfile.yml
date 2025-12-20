@@ -41,13 +41,19 @@ tasks:
   run:
     desc: Run Grafana server
     dir: '{{.TASKFILE_DIR}}'
-    preconditions:
-      - test -f {{.GF_BIN}}/bin/grafana-server
+    deps: [ensure]
     cmds:
       - mkdir -p {{.GF_DATA}}/plugins
       - mkdir -p {{.GF_DATA}}/provisioning/dashboards
       - mkdir -p {{.GF_DATA}}/provisioning/datasources
       - '{{.GF_BIN}}/bin/grafana-server --homepath={{.GF_BIN}} --config={{.TASKFILE_DIR}}/grafana.ini cfg:default.paths.data={{.GF_DATA}} cfg:default.paths.plugins={{.GF_DATA}}/plugins cfg:default.paths.provisioning={{.GF_DATA}}/provisioning'
+
+  ensure:
+    desc: Ensure binary exists (download if needed)
+    status:
+      - test -f {{.GF_BIN}}/bin/grafana-server
+    cmds:
+      - task: bin:download
 
   test:
     desc: Check Grafana health

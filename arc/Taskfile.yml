@@ -42,11 +42,17 @@ tasks:
   run:
     desc: Run arc server
     dir: '{{.TASKFILE_DIR}}'
-    preconditions:
-      - test -f {{.ARC_BIN}}/arc
+    deps: [ensure]
     cmds:
       - mkdir -p {{.ARC_DATA}}
       - '{{.ARC_BIN}}/arc --config arc.toml'
+
+  ensure:
+    desc: Ensure binary exists (build or download)
+    status:
+      - test -f {{.ARC_BIN}}/arc
+    cmds:
+      - task: bin:download
 
   test:
     desc: Run tests

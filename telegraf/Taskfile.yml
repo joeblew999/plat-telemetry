@@ -43,11 +43,17 @@ tasks:
   run:
     desc: Run telegraf with config
     dir: '{{.TASKFILE_DIR}}'
-    preconditions:
-      - test -f {{.TG_BIN}}/telegraf
+    deps: [ensure]
     cmds:
       - mkdir -p {{.TG_DATA}}
       - '{{.TG_BIN}}/telegraf --config telegraf.conf'
+
+  ensure:
+    desc: Ensure binary exists (build or download)
+    status:
+      - test -f {{.TG_BIN}}/telegraf
+    cmds:
+      - task: bin:download
 
   test:
     desc: Run tests

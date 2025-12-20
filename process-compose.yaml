@@ -1,11 +1,13 @@
 version: "0.5"
 
-# Works for DEV, CI, and USERS - just runs binaries directly
-# Pre-requisite: run `task bin:build` (dev) or `task bin:download` (user) first
+# Works for DEV, CI, and USERS with hot reload
+# - DEV: edit code, run `task build`, PC auto-restarts
+# - USER: run `task bin:download`, PC auto-restarts
+# - ensure task downloads binary if missing
 
 processes:
   arc:
-    command: ./arc/.bin/arc --config arc/arc.toml
+    command: task arc:run
     working_dir: .
     availability:
       restart: on_failure
@@ -17,13 +19,25 @@ processes:
         path: /health
       initial_delay_seconds: 3
       period_seconds: 5
+    depends_on:
+      arc-watch:
+        condition: process_started
+
+  arc-watch:
+    command: sleep infinity
+    working_dir: .
+    restart: watch
+    watch:
+      - arc/.bin/arc
 
   grafana:
-    command: ./grafana/.bin/bin/grafana-server --homepath=./grafana/.bin --config=./grafana/grafana.ini cfg:default.paths.data=./grafana/.data cfg:default.paths.plugins=./grafana/.data/plugins cfg:default.paths.provisioning=./grafana/.data/provisioning
+    command: task grafana:run
     working_dir: .
     depends_on:
       arc:
         condition: process_healthy
+      grafana-watch:
+        condition: process_started
     availability:
       restart: on_failure
       backoff_seconds: 5
@@ -35,12 +49,21 @@ processes:
       initial_delay_seconds: 5
       period_seconds: 5
 
+  grafana-watch:
+    command: sleep infinity
+    working_dir: .
+    restart: watch
+    watch:
+      - grafana/.bin/bin/grafana-server
+
   liftbridge:
-    command: ./liftbridge/.bin/liftbridge --data-dir=./liftbridge/.data
+    command: task liftbridge:run
     working_dir: .
     depends_on:
       nats:
         condition: process_healthy
+      liftbridge-watch:
+        condition: process_started
     availability:
       restart: on_failure
       backoff_seconds: 5
@@ -50,9 +73,19 @@ processes:
       initial_delay_seconds: 3
       period_seconds: 5
 
-  nats:
-    command: ./nats/.bin/nats-server --config nats/nats.conf
+  liftbridge-watch:
+    command: sleep infinity
     working_dir: .
+    restart: watch
+    watch:
+      - liftbridge/.bin/liftbridge
+
+  nats:
+    command: task nats:run
+    working_dir: .
+    depends_on:
+      nats-watch:
+        condition: process_started
     availability:
       restart: on_failure
       backoff_seconds: 5
@@ -64,14 +97,30 @@ processes:
       initial_delay_seconds: 2
       period_seconds: 5
 
+  nats-watch:
+    command: sleep infinity
+    working_dir: .
+    restart: watch
+    watch:
+      - nats/.bin/nats-server
+
   telegraf:
-    command: ./telegraf/.bin/telegraf --config telegraf/telegraf.conf
+    command: task telegraf:run
     working_dir: .
     depends_on:
       arc:
         condition: process_healthy
       liftbridge:
         condition: process_healthy
+      telegraf-watch:
+        condition: process_started
     availability:
       restart: on_failure
       backoff_seconds: 5
+
+  telegraf-watch:
+    command: sleep infinity
+    working_dir: .
+    restart: watch
+    watch:
+      - telegraf/.bin/telegraf

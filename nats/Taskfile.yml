@@ -42,11 +42,17 @@ tasks:
   run:
     desc: Run nats-server
     dir: '{{.TASKFILE_DIR}}'
-    preconditions:
-      - test -f {{.NATS_BIN}}/nats-server
+    deps: [ensure]
     cmds:
       - mkdir -p {{.NATS_DATA}}
       - '{{.NATS_BIN}}/nats-server --config nats.conf'
+
+  ensure:
+    desc: Ensure binary exists (build or download)
+    status:
+      - test -f {{.NATS_BIN}}/nats-server
+    cmds:
+      - task: bin:download
 
   test:
     desc: Run tests

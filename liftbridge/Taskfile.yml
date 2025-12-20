@@ -41,11 +41,17 @@ tasks:
 
   run:
     desc: Run liftbridge server
-    preconditions:
-      - test -f {{.LB_BIN}}/liftbridge
+    deps: [ensure]
     cmds:
       - mkdir -p {{.LB_DATA}}
       - '{{.LB_BIN}}/liftbridge --data-dir={{.LB_DATA}}'
+
+  ensure:
+    desc: Ensure binary exists (build or download)
+    status:
+      - test -f {{.LB_BIN}}/liftbridge
+    cmds:
+      - task: bin:download
 
   test:
     desc: Run tests
