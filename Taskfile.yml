@@ -18,13 +18,13 @@ tasks:
       - task --list
 
   src:clone:
-    desc: Clone all subsystem repositories
-    cmds:
-      - task nats:src:clone
-      - task liftbridge:src:clone
-      - task arc:src:clone
-      - task telegraf:src:clone
-      - task grafana:src:clone
+    desc: Clone all subsystem repositories (parallel)
+    deps:
+      - nats:src:clone
+      - liftbridge:src:clone
+      - arc:src:clone
+      - telegraf:src:clone
+      - grafana:src:clone
 
   src:update:
     desc: Update all subsystem repositories
@@ -36,13 +36,13 @@ tasks:
       - task grafana:src:update
 
   bin:build:
-    desc: Build all subsystems from source
-    cmds:
-      - task nats:build
-      - task liftbridge:build
-      - task arc:build
-      - task telegraf:build
-      - task grafana:build
+    desc: Build all subsystems from source (parallel)
+    deps:
+      - nats:build
+      - liftbridge:build
+      - arc:build
+      - telegraf:build
+      - grafana:build
 
   "bin:build:one":
     desc: "Build a single subsystem (usage: task bin:build:one SUBSYSTEM=nats)"
