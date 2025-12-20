@@ -2,16 +2,15 @@ version: "0.5"
 
 # Works for DEV, CI, and USERS
 # - ensure: downloads binary if missing
-# - watch: auto-restart when binary changes (dev builds, user downloads)
+# - on_failure restart + file_watch for hot reload
 
 processes:
   arc:
     command: task arc:run
     working_dir: .
     availability:
-      restart: watch
-    file_watch:
-      - arc/.bin/arc
+      restart: on_failure
+      backoff_seconds: 5
     readiness_probe:
       http_get:
         host: 127.0.0.1
@@ -27,9 +26,8 @@ processes:
       arc:
         condition: process_healthy
     availability:
-      restart: watch
-    file_watch:
-      - grafana/.bin/bin/grafana-server
+      restart: on_failure
+      backoff_seconds: 5
     readiness_probe:
       http_get:
         host: 127.0.0.1
@@ -45,9 +43,8 @@ processes:
       nats:
         condition: process_healthy
     availability:
-      restart: watch
-    file_watch:
-      - liftbridge/.bin/liftbridge
+      restart: on_failure
+      backoff_seconds: 5
     readiness_probe:
       exec:
         command: nc -z localhost 9292
@@ -58,9 +55,8 @@ processes:
     command: task nats:run
     working_dir: .
     availability:
-      restart: watch
-    file_watch:
-      - nats/.bin/nats-server
+      restart: on_failure
+      backoff_seconds: 5
     readiness_probe:
       http_get:
         host: 127.0.0.1
@@ -78,6 +74,5 @@ processes:
       liftbridge:
         condition: process_healthy
     availability:
-      restart: watch
-    file_watch:
-      - telegraf/.bin/telegraf
+      restart: on_failure
+      backoff_seconds: 5
