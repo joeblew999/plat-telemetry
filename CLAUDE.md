@@ -13,6 +13,8 @@
 
 **Process Compose orchestrates, Task executes.** PC handles process lifecycle, health checks, dependencies. Task handles build/download/ensure logic.
 
+**Run once, react to changes.** Start services with `task run` in one terminal. In another terminal, run `task build` (dev) or `task bin:download` (user) - binaries change, PC detects and restarts. All idempotent - run any command any time.
+
 ## Conventions
 
 Directories per subsystem:
