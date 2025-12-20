@@ -20,16 +20,29 @@ tasks:
     desc: Re-download Grafana (update GF_VERSION var first)
     cmds:
       - rm -rf {{.GF_BIN}}
-      - task src:clone
+      - task: src:clone
 
   build:
     desc: Grafana is pre-built (no-op)
+    status:
+      - test -f {{.GF_BIN}}/bin/grafana-server
     cmds:
       - echo "Grafana is pre-built, nothing to compile"
+
+  bin:download:
+    desc: Download Grafana release (alias for src:clone)
+    cmds:
+      - mkdir -p {{.GF_BIN}}
+      - curl -L {{.GF_DOWNLOAD_URL}} | tar xz --strip-components=1 -C {{.GF_BIN}}
+      - echo "{{.GF_VERSION}}" > {{.GF_BIN}}/.version
+    status:
+      - test -f {{.GF_BIN}}/bin/grafana-server
 
   run:
     desc: Run Grafana server
     dir: '{{.TASKFILE_DIR}}'
+    preconditions:
+      - test -f {{.GF_BIN}}/bin/grafana-server
     cmds:
       - mkdir -p {{.GF_DATA}}/plugins
       - mkdir -p {{.GF_DATA}}/provisioning/dashboards
@@ -38,11 +51,15 @@ tasks:
 
   test:
     desc: Check Grafana health
+    preconditions:
+      - curl -s http://localhost:3000/api/health >/dev/null
     cmds:
       - curl -s http://localhost:3000/api/health | jq .
 
   install:
     desc: Install Grafana plugins
+    preconditions:
+      - test -f {{.GF_BIN}}/bin/grafana-cli
     cmds:
       - '{{.GF_BIN}}/bin/grafana-cli --pluginsDir={{.GF_DATA}}/plugins plugins install grafana-clock-panel'
 
@@ -55,16 +72,22 @@ tasks:
     desc: Clean build artifacts
     cmds:
       - rm -rf {{.GF_BIN}}
+    status:
+      - '! test -d {{.GF_BIN}}'
 
   clean:data:
     desc: Clean data directory
     cmds:
       - rm -rf {{.GF_DATA}}
+    status:
+      - '! test -d {{.GF_DATA}}'
 
   clean:src:
     desc: Clean source directory
     cmds:
       - rm -rf {{.GF_BIN}}
+    status:
+      - '! test -d {{.GF_BIN}}'
 
   clean:all:
     desc: Clean everything (.bin, .data)

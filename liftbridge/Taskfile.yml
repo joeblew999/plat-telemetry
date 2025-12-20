@@ -21,6 +21,7 @@ tasks:
 
   src:update:
     desc: Fetch and checkout pinned version
+    deps: [src:clone]
     dir: '{{.LB_SRC}}'
     cmds:
       - git fetch --tags
@@ -40,43 +41,55 @@ tasks:
 
   run:
     desc: Run liftbridge server
-    deps: [build]
+    preconditions:
+      - test -f {{.LB_BIN}}/liftbridge
     cmds:
       - mkdir -p {{.LB_DATA}}
       - '{{.LB_BIN}}/liftbridge --data-dir={{.LB_DATA}}'
 
   test:
     desc: Run tests
+    deps: [src:clone]
     dir: '{{.LB_SRC}}'
     cmds:
       - go test -v ./...
 
   install:
     desc: Install liftbridge binary
+    deps: [src:clone]
     dir: '{{.LB_SRC}}'
     cmds:
       - go install .
 
   deps:
     desc: Download dependencies
+    deps: [src:clone]
     dir: '{{.LB_SRC}}'
     cmds:
       - go mod download
+    status:
+      - test -d {{.LB_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   clean:
     desc: Clean build artifacts
     cmds:
       - rm -rf {{.LB_BIN}}
+    status:
+      - '! test -d {{.LB_BIN}}'
 
   clean:data:
     desc: Clean data directory
     cmds:
       - rm -rf {{.LB_DATA}}
+    status:
+      - '! test -d {{.LB_DATA}}'
 
   clean:src:
     desc: Clean source directory
     cmds:
       - rm -rf {{.LB_SRC}}
+    status:
+      - '! test -d {{.LB_SRC}}'
 
   clean:all:
     desc: Clean everything (.src, .bin, .data)

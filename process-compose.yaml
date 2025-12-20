@@ -1,8 +1,11 @@
 version: "0.5"
 
+# Works for DEV, CI, and USERS - just runs binaries directly
+# Pre-requisite: run `task bin:build` (dev) or `task bin:download` (user) first
+
 processes:
   arc:
-    command: task arc:run
+    command: ./arc/.bin/arc --config arc/arc.toml
     working_dir: .
     availability:
       restart: on_failure
@@ -16,7 +19,7 @@ processes:
       period_seconds: 5
 
   grafana:
-    command: task grafana:run
+    command: ./grafana/.bin/bin/grafana-server --homepath=./grafana/.bin --config=./grafana/grafana.ini cfg:default.paths.data=./grafana/.data cfg:default.paths.plugins=./grafana/.data/plugins cfg:default.paths.provisioning=./grafana/.data/provisioning
     working_dir: .
     depends_on:
       arc:
@@ -33,7 +36,7 @@ processes:
       period_seconds: 5
 
   liftbridge:
-    command: task liftbridge:run
+    command: ./liftbridge/.bin/liftbridge --data-dir=./liftbridge/.data
     working_dir: .
     depends_on:
       nats:
@@ -48,7 +51,7 @@ processes:
       period_seconds: 5
 
   nats:
-    command: task nats:run
+    command: ./nats/.bin/nats-server --config nats/nats.conf
     working_dir: .
     availability:
       restart: on_failure
@@ -62,7 +65,7 @@ processes:
       period_seconds: 5
 
   telegraf:
-    command: task telegraf:run
+    command: ./telegraf/.bin/telegraf --config telegraf/telegraf.conf
     working_dir: .
     depends_on:
       arc:

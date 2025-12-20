@@ -21,6 +21,7 @@ tasks:
 
   src:update:
     desc: Fetch and checkout pinned version
+    deps: [src:clone]
     dir: '{{.TG_SRC}}'
     cmds:
       - git fetch origin {{.TG_VERSION}}
@@ -41,43 +42,54 @@ tasks:
 
   run:
     desc: Run telegraf with config
-    deps: [build]
     dir: '{{.TASKFILE_DIR}}'
+    preconditions:
+      - test -f {{.TG_BIN}}/telegraf
     cmds:
       - mkdir -p {{.TG_DATA}}
       - '{{.TG_BIN}}/telegraf --config telegraf.conf'
 
   test:
     desc: Run tests
+    deps: [src:clone]
     dir: '{{.TG_SRC}}'
     cmds:
       - make test
 
   test:short:
     desc: Run short tests
+    deps: [src:clone]
     dir: '{{.TG_SRC}}'
     cmds:
       - go test -short ./...
 
   install:
     desc: Install telegraf binary
+    deps: [src:clone]
     dir: '{{.TG_SRC}}'
     cmds:
       - make install
 
   deps:
     desc: Download dependencies
+    deps: [src:clone]
     dir: '{{.TG_SRC}}'
     cmds:
       - go mod download
+    status:
+      - test -d {{.TG_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   config:
     desc: Generate sample config
+    preconditions:
+      - test -f {{.TG_BIN}}/telegraf
     cmds:
       - '{{.TG_BIN}}/telegraf config > telegraf.sample.conf'
 
   plugins:
     desc: List available plugins
+    preconditions:
+      - test -f {{.TG_BIN}}/telegraf
     cmds:
       - '{{.TG_BIN}}/telegraf --input-list'
       - '{{.TG_BIN}}/telegraf --output-list'
@@ -87,16 +99,22 @@ tasks:
     cmds:
       - rm -rf {{.TG_BIN}}
       - rm -f telegraf.sample.conf
+    status:
+      - '! test -d {{.TG_BIN}}'
 
   clean:data:
     desc: Clean data directory
     cmds:
       - rm -rf {{.TG_DATA}}
+    status:
+      - '! test -d {{.TG_DATA}}'
 
   clean:src:
     desc: Clean source directory
     cmds:
       - rm -rf {{.TG_SRC}}
+    status:
+      - '! test -d {{.TG_SRC}}'
 
   clean:all:
     desc: Clean everything (.src, .bin, .data)

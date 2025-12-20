@@ -66,13 +66,13 @@ tasks:
       - task {{.SUBSYSTEM}}:src:clone
 
   bin:download:
-    desc: Download pre-built binaries from release (for users)
-    cmds:
-      - task nats:bin:download
-      - task liftbridge:bin:download
-      - task arc:bin:download
-      - task telegraf:bin:download
-      - task grafana:src:clone
+    desc: Download pre-built binaries from release (parallel, for users)
+    deps:
+      - nats:bin:download
+      - liftbridge:bin:download
+      - arc:bin:download
+      - telegraf:bin:download
+      - grafana:bin:download
 
   run:
     desc: Run all services with Process Compose
