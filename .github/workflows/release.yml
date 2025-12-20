@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -25,9 +26,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+          cache: false
 
       - name: Install Task
-        uses: arduino/setup-task@v2
+        run: go install github.com/go-task/task/v3/cmd/task@latest
 
       - name: Clone sources
         run: task src:clone
