@@ -2,7 +2,7 @@ version: '3'
 
 vars:
   LB_UPSTREAM_REPO: https://github.com/Basekick-Labs/liftbridge.git
-  LB_VERSION: '{{.LB_VERSION | default "v1.10.0"}}'
+  LB_VERSION: '{{.LB_VERSION | default "master"}}'
   LB_SRC: '{{.TASKFILE_DIR}}/.src'
   LB_BIN: '{{.TASKFILE_DIR}}/.bin'
   LB_DATA: '{{.TASKFILE_DIR}}/.data'
@@ -28,6 +28,7 @@ tasks:
 
   build:
     desc: Build liftbridge server
+    deps: [src:clone]
     dir: '{{.LB_SRC}}'
     sources:
       - '{{.LB_SRC}}/**/*.go'
@@ -39,6 +40,7 @@ tasks:
 
   run:
     desc: Run liftbridge server
+    deps: [build]
     cmds:
       - mkdir -p {{.LB_DATA}}
       - '{{.LB_BIN}}/liftbridge --data-dir={{.LB_DATA}}'

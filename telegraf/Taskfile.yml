@@ -28,6 +28,7 @@ tasks:
 
   build:
     desc: Build telegraf binary
+    deps: [src:clone]
     dir: '{{.TG_SRC}}'
     sources:
       - '{{.TG_SRC}}/**/*.go'
@@ -40,6 +41,7 @@ tasks:
 
   run:
     desc: Run telegraf with config
+    deps: [build]
     dir: '{{.TASKFILE_DIR}}'
     cmds:
       - mkdir -p {{.TG_DATA}}
