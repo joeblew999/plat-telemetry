@@ -1,0 +1,20 @@
+baseURL = 'https://joeblew999.github.io/plat-telemetry/'
+languageCode = 'en-us'
+title = 'Plat Telemetry'
+
+[params]
+  description = 'A unified telemetry platform with NATS, Liftbridge, Arc, Telegraf, and Grafana'
+
+[menu]
+  [[menu.main]]
+    name = 'Home'
+    url = '/'
+    weight = 1
+  [[menu.main]]
+    name = 'Getting Started'
+    url = '/getting-started/'
+    weight = 2
+  [[menu.main]]
+    name = 'Architecture'
+    url = '/architecture/'
+    weight = 3

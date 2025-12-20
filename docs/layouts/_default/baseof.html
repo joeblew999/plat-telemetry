@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="{{ .Site.LanguageCode }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }} | {{ .Site.Title }}</title>
+  <link rel="stylesheet" href="{{ "css/style.css" | relURL }}">
+</head>
+<body>
+  <nav>
+    <a href="{{ "/" | relURL }}" class="logo">{{ .Site.Title }}</a>
+    <ul>
+      {{ range .Site.Menus.main }}
+        <li><a href="{{ .URL | relURL }}">{{ .Name }}</a></li>
+      {{ end }}
+    </ul>
+  </nav>
+  <main>{{ block "main" . }}{{ end }}</main>
+  <footer><p>&copy; {{ now.Year }} Plat Telemetry</p></footer>
+</body>
+</html>

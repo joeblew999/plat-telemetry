@@ -18,7 +18,7 @@ You could also cheat and use the gh cli inside the task file, and so hecne insid
 
 ---
 
-The github pages can be automated via the gh cli ? assuming basic defaults that we want.
+~~The github pages can be automated via the gh cli ? assuming basic defaults that we want.~~ **DONE** - Added Hugo docs with GitHub Pages workflow
 
 ---
 
@@ -26,9 +26,15 @@ The github pages can be automated via the gh cli ? assuming basic defaults that 
 
 ---
 
-I suggest you introduce a manifest for each sub system, so you can track versions, so that when it sflpows through the whole system, you know what version you have.
+I suggest you introduce a manifest for each sub system, so you can track versions, so that when it flows through the whole system, you know what version you have.
 
 ---
 
 ~~build: can have bin suffix to match bin:download~~ **DONE** - renamed to `bin:build`
+
+---
+
+hugo docs will need DEV and USERS section, because users are doing the taskfile stuff differently of course 
+
+We have same task files to reduce friction between DEV and USERS and OPS.
 
