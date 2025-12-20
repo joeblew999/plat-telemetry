@@ -31,10 +31,8 @@ tasks:
     desc: Build telegraf binary
     deps: [src:clone]
     dir: '{{.TG_SRC}}'
-    sources:
-      - '{{.TG_SRC}}/**/*.go'
-    generates:
-      - '{{.TG_BIN}}/telegraf'
+    status:
+      - test -f {{.TG_BIN}}/telegraf
     cmds:
       - mkdir -p {{.TG_BIN}}
       - make build

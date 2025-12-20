@@ -31,10 +31,8 @@ tasks:
     desc: Build arc binary
     deps: [src:clone]
     dir: '{{.ARC_SRC}}'
-    sources:
-      - '{{.ARC_SRC}}/**/*.go'
-    generates:
-      - '{{.ARC_BIN}}/arc'
+    status:
+      - test -f {{.ARC_BIN}}/arc
     cmds:
       - mkdir -p {{.ARC_BIN}}
       - go build -o {{.ARC_BIN}}/arc ./cmd/arc

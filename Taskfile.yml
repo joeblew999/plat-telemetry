@@ -166,8 +166,14 @@ tasks:
       - task grafana:clean:all
 
   # CI-specific tasks (Go binaries only, no Hugo/Grafana)
+  # These skip if binaries already exist (cache hit)
   ci:src:clone:
-    desc: Clone sources for CI (Go binaries only)
+    desc: Clone sources for CI (skips if binaries cached)
+    status:
+      - test -f nats/.bin/nats-server
+      - test -f liftbridge/.bin/liftbridge
+      - test -f arc/.bin/arc
+      - test -f telegraf/.bin/telegraf
     deps:
       - nats:src:clone
       - liftbridge:src:clone
@@ -175,7 +181,12 @@ tasks:
       - telegraf:src:clone
 
   ci:build:
-    desc: Build binaries for CI (Go binaries only)
+    desc: Build binaries for CI (skips if binaries cached)
+    status:
+      - test -f nats/.bin/nats-server
+      - test -f liftbridge/.bin/liftbridge
+      - test -f arc/.bin/arc
+      - test -f telegraf/.bin/telegraf
     deps:
       - nats:build
       - liftbridge:build
