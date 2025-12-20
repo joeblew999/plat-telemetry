@@ -107,5 +107,6 @@ tasks:
     cmds:
       - mkdir -p {{.TG_BIN}}
       - curl -L {{.TG_RELEASE_URL}}/telegraf-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.TG_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.TG_BIN}}/.version
     status:
       - test -f {{.TG_BIN}}/telegraf

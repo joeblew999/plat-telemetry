@@ -88,5 +88,6 @@ tasks:
     cmds:
       - mkdir -p {{.NATS_BIN}}
       - curl -L {{.NATS_RELEASE_URL}}/nats-server-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.NATS_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.NATS_BIN}}/.version
     status:
       - test -f {{.NATS_BIN}}/nats-server

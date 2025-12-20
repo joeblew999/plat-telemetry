@@ -87,5 +87,6 @@ tasks:
     cmds:
       - mkdir -p {{.LB_BIN}}
       - curl -L {{.LB_RELEASE_URL}}/liftbridge-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.LB_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.LB_BIN}}/.version
     status:
       - test -f {{.LB_BIN}}/liftbridge

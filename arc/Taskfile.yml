@@ -94,5 +94,6 @@ tasks:
     cmds:
       - mkdir -p {{.ARC_BIN}}
       - curl -L {{.ARC_RELEASE_URL}}/arc-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.ARC_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.ARC_BIN}}/.version
     status:
       - test -f {{.ARC_BIN}}/arc

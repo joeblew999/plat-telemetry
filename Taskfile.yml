@@ -163,18 +163,18 @@ tasks:
       - hugo --minify
 
   manifest:
-    desc: Show pinned versions vs cloned versions
+    desc: Show pinned versions vs installed versions
     cmds:
       - |
         echo "=== Subsystem Versions ==="
         echo ""
-        echo "SUBSYSTEM     PINNED       CLONED"
-        echo "---------     ------       ------"
-        echo "nats          {{.NATS_VERSION | default "v2.10.24"}}    $([ -d nats/.src/.git ] && git -C nats/.src describe --tags 2>/dev/null || echo 'not cloned')"
-        echo "liftbridge    {{.LB_VERSION | default "v1.10.0"}}     $([ -d liftbridge/.src/.git ] && git -C liftbridge/.src describe --tags 2>/dev/null || echo 'not cloned')"
-        echo "arc           {{.ARC_VERSION | default "main"}}         $([ -d arc/.src/.git ] && git -C arc/.src rev-parse --short HEAD 2>/dev/null || echo 'not cloned')"
-        echo "telegraf      {{.TG_VERSION | default "master"}}       $([ -d telegraf/.src/.git ] && git -C telegraf/.src rev-parse --short HEAD 2>/dev/null || echo 'not cloned')"
-        echo "grafana       {{.GF_VERSION | default "11.4.0"}}      $([ -f grafana/.bin/bin/grafana ] && grafana/.bin/bin/grafana --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo 'not downloaded')"
+        echo "SUBSYSTEM     PINNED       SOURCE            BINARY"
+        echo "---------     ------       ------            ------"
+        echo "nats          {{.NATS_VERSION | default "v2.10.24"}}    $([ -d nats/.src/.git ] && git -C nats/.src describe --tags 2>/dev/null || echo '-')    $(cat nats/.bin/.version 2>/dev/null || echo '-')"
+        echo "liftbridge    {{.LB_VERSION | default "v1.10.0"}}     $([ -d liftbridge/.src/.git ] && git -C liftbridge/.src describe --tags 2>/dev/null || echo '-')     $(cat liftbridge/.bin/.version 2>/dev/null || echo '-')"
+        echo "arc           {{.ARC_VERSION | default "main"}}         $([ -d arc/.src/.git ] && git -C arc/.src rev-parse --short HEAD 2>/dev/null || echo '-')         $(cat arc/.bin/.version 2>/dev/null || echo '-')"
+        echo "telegraf      {{.TG_VERSION | default "master"}}       $([ -d telegraf/.src/.git ] && git -C telegraf/.src rev-parse --short HEAD 2>/dev/null || echo '-')       $(cat telegraf/.bin/.version 2>/dev/null || echo '-')"
+        echo "grafana       {{.GF_VERSION | default "11.4.0"}}      $(cat grafana/.bin/.version 2>/dev/null || echo '-')          $(cat grafana/.bin/.version 2>/dev/null || echo '-')"
 
   github:pages:
     desc: Enable GitHub Pages (idempotent)
