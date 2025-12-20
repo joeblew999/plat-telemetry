@@ -11,10 +11,14 @@ title = 'Plat Telemetry'
     url = '/'
     weight = 1
   [[menu.main]]
-    name = 'Getting Started'
-    url = '/getting-started/'
+    name = 'Users'
+    url = '/users/'
     weight = 2
+  [[menu.main]]
+    name = 'Dev'
+    url = '/dev/'
+    weight = 3
   [[menu.main]]
     name = 'Architecture'
     url = '/architecture/'
-    weight = 3
+    weight = 4

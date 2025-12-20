@@ -1,21 +1,27 @@
 <!DOCTYPE html>
-<html lang="{{ .Site.LanguageCode }}">
+<html lang="{{ .Site.LanguageCode }}" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }} | {{ .Site.Title }}</title>
-  <link rel="stylesheet" href="{{ "css/style.css" | relURL }}">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
 </head>
 <body>
-  <nav>
-    <a href="{{ "/" | relURL }}" class="logo">{{ .Site.Title }}</a>
-    <ul>
-      {{ range .Site.Menus.main }}
-        <li><a href="{{ .URL | relURL }}">{{ .Name }}</a></li>
-      {{ end }}
-    </ul>
-  </nav>
-  <main>{{ block "main" . }}{{ end }}</main>
-  <footer><p>&copy; {{ now.Year }} Plat Telemetry</p></footer>
+  <header class="container">
+    <nav>
+      <ul>
+        <li><strong><a href="{{ "/" | relURL }}">{{ .Site.Title }}</a></strong></li>
+      </ul>
+      <ul>
+        {{ range .Site.Menus.main }}
+          <li><a href="{{ .URL | relURL }}">{{ .Name }}</a></li>
+        {{ end }}
+      </ul>
+    </nav>
+  </header>
+  <main class="container">{{ block "main" . }}{{ end }}</main>
+  <footer class="container">
+    <small>&copy; {{ now.Year }} Plat Telemetry</small>
+  </footer>
 </body>
 </html>
