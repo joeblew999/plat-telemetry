@@ -154,3 +154,17 @@ tasks:
     dir: docs
     cmds:
       - hugo --minify
+
+  github:pages:
+    desc: Enable GitHub Pages (idempotent)
+    cmds:
+      - |
+        if gh api repos/{{.RELEASE_REPO}}/pages 2>/dev/null | grep -q '"build_type":"workflow"'; then
+          echo "GitHub Pages already enabled with Actions"
+        else
+          echo "Enabling GitHub Pages..."
+          gh api repos/{{.RELEASE_REPO}}/pages -X POST -f build_type=workflow 2>/dev/null || \
+          gh api repos/{{.RELEASE_REPO}}/pages -X PUT -f build_type=workflow
+        fi
+    status:
+      - gh api repos/{{.RELEASE_REPO}}/pages 2>/dev/null | grep -q '"build_type":"workflow"'
