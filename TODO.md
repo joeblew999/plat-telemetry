@@ -28,12 +28,12 @@
 
 ---
 
-hugo docs will need DEV and USERS section, because users are doing the taskfile stuff differently of course 
+~~hugo docs will need DEV and USERS section, because users are doing the taskfile stuff differently of course~~ **DONE** - Added `/users/` and `/dev/` sections
 
 We have same task files to reduce friction between DEV and USERS and OPS.
 
 ---
 
-Use PICO CSS in our hugo based docs ? its semantic and easy without any complexity and so then we dont need any custom css ?
+~~Use PICO CSS in our hugo based docs ?~~ **DONE** - Replaced custom CSS with Pico CSS v2
 
 
