@@ -8,6 +8,16 @@ Github Pages: https://joeblew999.github.io/plat-telemetry/
 
 Announcement: https://basekick.net/blog/liftbridge-joins-basekick-labs
 
+## Runnng
+
+```sh
+
+task run
+
+```
+
+
+
 ## Architecture
 
 ```

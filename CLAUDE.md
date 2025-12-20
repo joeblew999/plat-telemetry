@@ -2,6 +2,16 @@
 
 ## Philosophy
 
+STOP TELLING the User to do things. DOG FOOD your own shit !!! Stop beng so lazy !! 
+
+ALWAYS be RUNNING task run OR task run:attach so your cant CHEAT !!! 
+
+STOP touching the OS. Use Project level encapsualtion, because hundreds of AI's are crawling over the OS changing things !!
+
+NEVER EVER JUST PUSH TO GITHUB CI and PRAY !!! 
+
+ONLY ever have a single github workflow for CI.
+
 **Taskfiles are the source of truth.** Everything runs through `task` - DEV, CI, OPS use identical commands.
 
 **Idempotency everywhere.** Every task should be safe to run repeatedly:

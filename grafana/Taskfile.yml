@@ -12,6 +12,7 @@ tasks:
     cmds:
       - mkdir -p {{.GF_BIN}}
       - curl -L {{.GF_DOWNLOAD_URL}} | tar xz --strip-components=1 -C {{.GF_BIN}}
+      - xattr -r -d com.apple.quarantine {{.GF_BIN}}/ 2>/dev/null || true
       - echo "{{.GF_VERSION}}" > {{.GF_BIN}}/.version
     status:
       - test -f {{.GF_BIN}}/bin/grafana-server
@@ -34,6 +35,7 @@ tasks:
     cmds:
       - mkdir -p {{.GF_BIN}}
       - curl -L {{.GF_DOWNLOAD_URL}} | tar xz --strip-components=1 -C {{.GF_BIN}}
+      - xattr -r -d com.apple.quarantine {{.GF_BIN}}/ 2>/dev/null || true
       - echo "{{.GF_VERSION}}" > {{.GF_BIN}}/.version
     status:
       - test -f {{.GF_BIN}}/bin/grafana-server

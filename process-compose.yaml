@@ -1,12 +1,13 @@
 version: "0.5"
 
-# Works for DEV, CI, and USERS
-# - ensure: downloads binary if missing
-# - on_failure restart + file_watch for hot reload
+# Run binaries directly for proper CPU/MEM stats in TUI
+# Use shell commands to ensure dirs exist
 
 processes:
   arc:
-    command: task arc:run
+    command: |
+      mkdir -p arc/.data
+      ./arc/.bin/arc --config arc/arc.toml
     working_dir: .
     availability:
       restart: on_failure
@@ -19,9 +20,9 @@ processes:
       initial_delay_seconds: 3
       period_seconds: 5
 
-  docs:
-    command: task docs:run
-    working_dir: .
+  hugo:
+    command: hugo server -D --bind 0.0.0.0 --port 1313
+    working_dir: ./docs
     availability:
       restart: on_failure
       backoff_seconds: 5
@@ -29,12 +30,19 @@ processes:
       http_get:
         host: 127.0.0.1
         port: 1313
-        path: /
+        path: /plat-telemetry/
       initial_delay_seconds: 2
       period_seconds: 5
 
   grafana:
-    command: task grafana:run
+    command: |
+      mkdir -p grafana/.data/plugins grafana/.data/provisioning/dashboards grafana/.data/provisioning/datasources
+      ./grafana/.bin/bin/grafana-server \
+        --homepath=./grafana/.bin \
+        --config=./grafana/grafana.ini \
+        cfg:default.paths.data=./grafana/.data \
+        cfg:default.paths.plugins=./grafana/.data/plugins \
+        cfg:default.paths.provisioning=./grafana/.data/provisioning
     working_dir: .
     depends_on:
       arc:
@@ -51,7 +59,9 @@ processes:
       period_seconds: 5
 
   liftbridge:
-    command: task liftbridge:run
+    command: |
+      mkdir -p liftbridge/.data
+      ./liftbridge/.bin/liftbridge --data-dir=./liftbridge/.data
     working_dir: .
     depends_on:
       nats:
@@ -66,7 +76,9 @@ processes:
       period_seconds: 5
 
   nats:
-    command: task nats:run
+    command: |
+      mkdir -p nats/.data
+      ./nats/.bin/nats-server --config nats/nats.conf
     working_dir: .
     availability:
       restart: on_failure
@@ -80,7 +92,9 @@ processes:
       period_seconds: 5
 
   telegraf:
-    command: task telegraf:run
+    command: |
+      mkdir -p telegraf/.data
+      ./telegraf/.bin/telegraf --config telegraf/telegraf.conf
     working_dir: .
     depends_on:
       arc:
@@ -90,3 +104,8 @@ processes:
     availability:
       restart: on_failure
       backoff_seconds: 5
+    readiness_probe:
+      exec:
+        command: pgrep -f "telegraf --config"
+      initial_delay_seconds: 3
+      period_seconds: 5
