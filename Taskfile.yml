@@ -51,6 +51,20 @@ tasks:
     cmds:
       - task {{.SUBSYSTEM}}:build
 
+  "bin:download:one":
+    desc: "Download a single subsystem binary (usage: task bin:download:one SUBSYSTEM=nats)"
+    vars:
+      SUBSYSTEM: '{{.SUBSYSTEM | default "nats"}}'
+    cmds:
+      - task {{.SUBSYSTEM}}:bin:download
+
+  "src:clone:one":
+    desc: "Clone a single subsystem source (usage: task src:clone:one SUBSYSTEM=nats)"
+    vars:
+      SUBSYSTEM: '{{.SUBSYSTEM | default "nats"}}'
+    cmds:
+      - task {{.SUBSYSTEM}}:src:clone
+
   bin:download:
     desc: Download pre-built binaries from release (for users)
     cmds:
