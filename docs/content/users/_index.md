@@ -2,8 +2,6 @@
 title: "Users Guide"
 ---
 
-# Users Guide
-
 Run the pre-built platform without building from source.
 
 ## Quick Start

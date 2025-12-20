@@ -1,11 +1,38 @@
 {{ define "main" }}
-<div class="hero"><h1>Plat Telemetry</h1><p>{{ .Site.Params.description }}</p></div>
-<div class="features">
-  <div class="feature"><h3>NATS</h3><p>High-performance messaging</p></div>
-  <div class="feature"><h3>Liftbridge</h3><p>Streaming</p></div>
-  <div class="feature"><h3>Arc</h3><p>Analytics</p></div>
-  <div class="feature"><h3>Telegraf</h3><p>Metrics</p></div>
-  <div class="feature"><h3>Grafana</h3><p>Dashboards</p></div>
-</div>
-<div class="quickstart"><h2>Quick Start</h2><pre><code>task bin:download && task run</code></pre></div>
+<hgroup>
+  <h1>Plat Telemetry</h1>
+  <p>{{ .Site.Params.description }}</p>
+</hgroup>
+
+<section>
+  <h2>Components</h2>
+  <div class="grid">
+    <article>
+      <h3>NATS</h3>
+      <p>High-performance messaging system</p>
+    </article>
+    <article>
+      <h3>Liftbridge</h3>
+      <p>Lightweight message streams</p>
+    </article>
+    <article>
+      <h3>Arc</h3>
+      <p>Telemetry storage with DuckDB</p>
+    </article>
+    <article>
+      <h3>Telegraf</h3>
+      <p>Metrics collection agent</p>
+    </article>
+    <article>
+      <h3>Grafana</h3>
+      <p>Visualization dashboards</p>
+    </article>
+  </div>
+</section>
+
+<section>
+  <h2>Quick Start</h2>
+  <pre><code>task bin:download && task run</code></pre>
+  <p>See the <a href="{{ "users/" | relURL }}">Users Guide</a> or <a href="{{ "dev/" | relURL }}">Developer Guide</a> for more details.</p>
+</section>
 {{ end }}

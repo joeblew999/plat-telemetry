@@ -2,8 +2,6 @@
 title: "Developer Guide"
 ---
 
-# Developer Guide
-
 Build and develop the platform from source.
 
 ## Quick Start
