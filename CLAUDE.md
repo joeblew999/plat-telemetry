@@ -1,41 +1,29 @@
 # CLAUDE
 
-## Directory Conventions
+## Philosophy
 
-Each subsystem uses these standard directories:
+**Taskfiles are the source of truth.** Everything runs through `task` - DEV, CI, OPS use identical commands.
 
-- `.src/` - Source code (cloned from upstream or downloaded)
-- `.bin/` - Compiled binaries or downloaded executables
-- `.data/` - Runtime data (databases, logs, state)
+**Idempotency everywhere.** Every task should be safe to run repeatedly:
+- Use `status:` to skip if already done
+- Use `sources:/generates:` for incremental builds
+- Use `deps:` chains so tasks auto-satisfy dependencies
 
-All paths should use `{{.TASKFILE_DIR}}` prefix for absolute paths when called via includes.
+**One workflow for all users.** DEV builds from source, USER downloads binaries, but `task run` works for both via `ensure` task that auto-downloads if binary missing.
 
-## Taskfile Conventions
+**Process Compose orchestrates, Task executes.** PC handles process lifecycle, health checks, dependencies. Task handles build/download/ensure logic.
 
-Each subsystem Taskfile should have these standard tasks:
+## Conventions
 
-- `src:clone` - Clone/download source
-- `src:update` - Update source
-- `build` - Build binary
-- `run` - Run service
-- `clean` - Clean `.bin/`
-- `clean:data` - Clean `.data/`
-- `clean:src` - Clean `.src/`
-- `clean:all` - Clean everything
+Directories per subsystem:
+- `.src/` - Source code
+- `.bin/` - Binaries
+- `.data/` - Runtime data
 
-Use `GOWORK: off` for all Go builds.
+Standard tasks:
+- `ensure` - Download binary if missing (idempotent)
+- `build` - Build from source (deps on src:clone)
+- `run` - Run service (deps on ensure)
+- `bin:download` - Download pre-built binary
 
-## Process Compose
-
-Keep the process compose file ordered alphabetically.
-
-## CI Philosophy
-
-**Taskfiles are the source of truth.** CI workflows should be thin wrappers that just call `task` commands.
-
-- NO logic in CI workflows - put it in Taskfiles
-- Test locally with same commands CI uses
-- Use `:one` variants for fast iteration: `task src:clone:one SUBSYSTEM=nats`
-- CI just runs: `task src:clone && task bin:build`
-
-This ensures DEV, CI, and OPS all use identical commands.
+Use `GOWORK: off` for Go builds.
