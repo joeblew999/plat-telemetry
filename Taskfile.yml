@@ -78,17 +78,22 @@ tasks:
   run:
     desc: Run all services with Process Compose
     cmds:
-      - process-compose up
+      - process-compose up -U -u ./.pc.sock
 
   run:fg:
     desc: Run all services in foreground (no TUI)
     cmds:
-      - process-compose up -t=false
+      - process-compose up -U -u ./.pc.sock -t=false
+
+  run:attach:
+    desc: Attach to running Process Compose instance
+    cmds:
+      - process-compose attach -U -u ./.pc.sock
 
   stop:
     desc: Stop all services
     cmds:
-      - process-compose down
+      - process-compose down -U -u ./.pc.sock
 
   test:
     desc: Run tests for all subsystems

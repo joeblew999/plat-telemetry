@@ -27,3 +27,4 @@ coverage.html
 Thumbs.db
 docs/public/
 .playwright-mcp/
+.pc.sock

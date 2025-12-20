@@ -93,8 +93,8 @@ tasks:
     cmds:
       - rm -rf {{.DOCS_BIN}} {{.DOCS_DATA}} {{.DOCS_SRC}}/.hugo_build.lock
 
-  new:
-    desc: Create new content (usage: task docs:new PAGE=architecture/new-page)
+  "new":
+    desc: "Create new content (usage: task docs:new PAGE=architecture/new-page)"
     vars:
       PAGE: '{{.PAGE | default "posts/new-post"}}'
     dir: '{{.DOCS_SRC}}'
