@@ -1,0 +1,66 @@
+version: '3'
+
+vars:
+  VERSION: '11.4.0'
+  DOWNLOAD_URL: 'https://dl.grafana.com/oss/release/grafana-{{.VERSION}}.darwin-arm64.tar.gz'
+  BIN: '{{.TASKFILE_DIR}}/.bin'
+  DATA: '{{.TASKFILE_DIR}}/.data'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  src:clone:
+    desc: Download Grafana release
+    cmds:
+      - mkdir -p {{.BIN}}
+      - curl -L {{.DOWNLOAD_URL}} | tar xz --strip-components=1 -C {{.BIN}}
+    status:
+      - test -f {{.BIN}}/bin/grafana-server
+
+  src:update:
+    desc: Re-download Grafana (update VERSION var first)
+    cmds:
+      - rm -rf {{.BIN}}
+      - task src:clone
+
+  build:
+    desc: Grafana is pre-built (no-op)
+    cmds:
+      - echo "Grafana is pre-built, nothing to compile"
+
+  run:
+    desc: Run Grafana server
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - mkdir -p {{.DATA}}/plugins
+      - mkdir -p {{.DATA}}/provisioning/dashboards
+      - mkdir -p {{.DATA}}/provisioning/datasources
+      - '{{.BIN}}/bin/grafana-server --homepath={{.BIN}} --config=grafana.ini cfg:default.paths.data={{.DATA}} cfg:default.paths.plugins={{.DATA}}/plugins cfg:default.paths.provisioning={{.DATA}}/provisioning'
+
+  test:
+    desc: Check Grafana health
+    cmds:
+      - curl -s http://localhost:3000/api/health | jq .
+
+  install:
+    desc: Install Grafana plugins
+    cmds:
+      - '{{.BIN}}/bin/grafana-cli --pluginsDir={{.DATA}}/plugins plugins install grafana-clock-panel'
+
+  deps:
+    desc: No dependencies for Grafana binary
+    cmds:
+      - echo "Grafana is pre-built, no dependencies to download"
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BIN}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.DATA}}

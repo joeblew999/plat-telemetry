@@ -1,0 +1,71 @@
+version: '3'
+
+vars:
+  UPSTREAM_REPO: https://github.com/nats-io/nats-server.git
+  SRC: '{{.TASKFILE_DIR}}/.src'
+  BIN: '{{.TASKFILE_DIR}}/.bin'
+  DATA: '{{.TASKFILE_DIR}}/.data'
+
+env:
+  GOWORK: off
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  src:clone:
+    desc: Clone the upstream repository
+    cmds:
+      - git clone {{.UPSTREAM_REPO}} {{.SRC}}
+    status:
+      - test -d {{.SRC}}
+
+  src:update:
+    desc: Pull latest changes from upstream
+    dir: '{{.SRC}}'
+    cmds:
+      - git pull origin main
+
+  build:
+    desc: Build nats-server binary
+    dir: '{{.SRC}}'
+    cmds:
+      - mkdir -p {{.BIN}}
+      - go build -o {{.BIN}}/nats-server .
+
+  run:
+    desc: Run nats-server
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - mkdir -p {{.DATA}}
+      - '{{.BIN}}/nats-server --config nats.conf --store_dir {{.DATA}}'
+
+  test:
+    desc: Run tests
+    dir: '{{.SRC}}'
+    cmds:
+      - go test -v ./...
+
+  install:
+    desc: Install nats-server binary
+    dir: '{{.SRC}}'
+    cmds:
+      - go install .
+
+  deps:
+    desc: Download dependencies
+    dir: '{{.SRC}}'
+    cmds:
+      - go mod download
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.BIN}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.DATA}}

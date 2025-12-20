@@ -1,9 +1,11 @@
 version: '3'
 
 includes:
+  nats: ./nats
   liftbridge: ./liftbridge
   arc: ./arc
   telegraf: ./telegraf
+  grafana: ./grafana
 
 tasks:
   default:
@@ -14,23 +16,29 @@ tasks:
   src:clone:
     desc: Clone all subsystem repositories
     cmds:
+      - task nats:src:clone
       - task liftbridge:src:clone
       - task arc:src:clone
       - task telegraf:src:clone
+      - task grafana:src:clone
 
   src:update:
     desc: Update all subsystem repositories
     cmds:
+      - task nats:src:update
       - task liftbridge:src:update
       - task arc:src:update
       - task telegraf:src:update
+      - task grafana:src:update
 
   build:
     desc: Build all subsystems
     cmds:
+      - task nats:build
       - task liftbridge:build
       - task arc:build
       - task telegraf:build
+      - task grafana:build
 
   run:
     desc: Run all services with Process Compose
@@ -50,6 +58,7 @@ tasks:
   test:
     desc: Run tests for all subsystems
     cmds:
+      - task nats:test
       - task liftbridge:test
       - task arc:test
       - task telegraf:test
@@ -57,6 +66,7 @@ tasks:
   deps:
     desc: Download dependencies for all subsystems
     cmds:
+      - task nats:deps
       - task liftbridge:deps
       - task arc:deps
       - task telegraf:deps
@@ -64,13 +74,17 @@ tasks:
   clean:
     desc: Clean all build artifacts
     cmds:
+      - task nats:clean
       - task liftbridge:clean
       - task arc:clean
       - task telegraf:clean
+      - task grafana:clean
 
   clean:data:
     desc: Clean all data directories
     cmds:
+      - task nats:clean:data
       - task liftbridge:clean:data
       - task arc:clean:data
       - task telegraf:clean:data
+      - task grafana:clean:data
