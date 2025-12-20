@@ -29,6 +29,10 @@ tasks:
   build:
     desc: Build nats-server binary
     dir: '{{.NATS_SRC}}'
+    sources:
+      - '{{.NATS_SRC}}/**/*.go'
+    generates:
+      - '{{.NATS_BIN}}/nats-server'
     cmds:
       - mkdir -p {{.NATS_BIN}}
       - go build -o {{.NATS_BIN}}/nats-server .

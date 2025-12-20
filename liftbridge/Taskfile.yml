@@ -29,6 +29,10 @@ tasks:
   build:
     desc: Build liftbridge server
     dir: '{{.LB_SRC}}'
+    sources:
+      - '{{.LB_SRC}}/**/*.go'
+    generates:
+      - '{{.LB_BIN}}/liftbridge'
     cmds:
       - mkdir -p {{.LB_BIN}}
       - go build -o {{.LB_BIN}}/liftbridge .

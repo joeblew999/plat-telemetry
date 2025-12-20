@@ -29,6 +29,10 @@ tasks:
   build:
     desc: Build telegraf binary
     dir: '{{.TG_SRC}}'
+    sources:
+      - '{{.TG_SRC}}/**/*.go'
+    generates:
+      - '{{.TG_BIN}}/telegraf'
     cmds:
       - mkdir -p {{.TG_BIN}}
       - make build
