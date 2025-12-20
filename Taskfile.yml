@@ -35,8 +35,8 @@ tasks:
       - task telegraf:src:update
       - task grafana:src:update
 
-  build:
-    desc: Build all subsystems
+  bin:build:
+    desc: Build all subsystems from source
     cmds:
       - task nats:build
       - task liftbridge:build

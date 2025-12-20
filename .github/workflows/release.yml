@@ -35,10 +35,7 @@ jobs:
         run: task src:clone
 
       - name: Build binaries
-        run: task build
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
+        run: task bin:build
 
       - name: Package binaries
         run: |
