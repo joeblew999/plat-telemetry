@@ -2,7 +2,7 @@
 
 ## Goal
 
-Automate upstream version detection and binary rebuilds using git repository monitoring instead of manual version pinning.
+Automate upstream version detection and binary rebuilds using **git fetch** and **GitHub webhooks** - NO POLLING!
 
 ## Problem Statement
 
@@ -13,10 +13,10 @@ Automate upstream version detection and binary rebuilds using git repository mon
 - No automation for detecting when upstream changes
 
 **What we need:**
-- Auto-detect when upstream repos have new commits/tags
-- Trigger rebuilds automatically when new versions available
+- Use git fetch to check upstream state (on-demand, not polling)
+- GitHub webhooks to trigger checks when upstream actually changes
 - Use git metadata as the source of truth for versioning
-- Enable CI to poll upstream repos on a schedule
+- Zero polling - event-driven architecture only
 
 ## Tools to Use
 
@@ -60,21 +60,27 @@ handler.OnPushEvent(func(event PushEvent) error {
 
 ## Architecture
 
-### Component 1: Version Poller (Go Binary)
+### Component 1: Version Checker (Go Binary) - ON-DEMAND ONLY
 
-**Name:** `version-poller`
-**Location:** `vp/` (new subsystem)
+**Name:** `version-checker`
+**Location:** `vc/` (new subsystem)
 
 **Responsibilities:**
-1. Poll upstream git repos for changes (cron-like)
-2. Compare upstream HEAD vs local .src HEAD
+1. Run `git fetch` on .src repos (on-demand, when triggered)
+2. Compare local HEAD vs origin/main
 3. Detect new tags/releases
 4. Output: JSON manifest of available updates
 
+**Key principle: NO POLLING!**
+- Only runs when explicitly called: `task version:check`
+- Only runs when webhook receives event
+- Uses `git fetch` to query remote state
+- Zero background processes, zero cron jobs
+
 **Interface:**
 ```bash
-# Check all subsystems for updates
-vp/.bin/version-poller check-all
+# Manually check for updates (rare, for testing)
+task version:check
 
 # Output:
 # {
@@ -84,32 +90,42 @@ vp/.bin/version-poller check-all
 ```
 
 **Implementation:**
-- Uses go-git to avoid git binary dependency
-- Reads subsystem Taskfiles to find upstream repos
-- Caches results to avoid excessive GitHub API calls
-- Outputs structured data for Taskfile consumption
+- Uses go-git for `git fetch` operations
+- Compares local .src HEAD with remote refs
+- No caching needed - git fetch is fast
+- Outputs structured data for automation
 
-### Component 2: GitHub Webhook Receiver (Optional)
+### Component 2: GitHub Webhook Receiver (PRIMARY TRIGGER)
 
 **Name:** `gh-webhook`
 **Location:** `ghw/` (new subsystem)
 
 **Responsibilities:**
-1. Receive GitHub webhook events
-2. Validate signatures
-3. Trigger version poller on relevant events
-4. Enable real-time updates instead of polling
+1. Receive GitHub webhook events from upstream repos
+2. Validate HMAC signatures
+3. Trigger `task version:check` on push/release events
+4. Trigger rebuilds automatically
+
+**This is the PRIMARY mechanism - not "optional"!**
 
 **Interface:**
 ```bash
-# Start webhook server
+# Start webhook server (runs via Process Compose)
 ghw/.bin/gh-webhook serve --port 8080 --secret $WEBHOOK_SECRET
 
-# Receives POST from GitHub on:
-# - push events
-# - release events
-# - tag creation
+# Webhook flow:
+# 1. GitHub pushes to nats-io/nats-server
+# 2. Webhook POST to our server
+# 3. Validates signature
+# 4. Runs: task version:check SUBSYSTEM=nats
+# 5. If update available: task nats:src:update nats:bin:build
+# 6. Runs: task reload PROC=nats
 ```
+
+**Setup required:**
+- Configure webhooks on upstream repos (or fork them and watch forks)
+- Set webhook secret in .env
+- Expose webhook endpoint (ngrok for dev, proper domain for prod)
 
 ### Component 3: Taskfile Integration
 
@@ -117,30 +133,34 @@ ghw/.bin/gh-webhook serve --port 8080 --secret $WEBHOOK_SECRET
 
 ```yaml
 version:check:
-  desc: Check all subsystems for upstream updates
+  desc: Check subsystems for upstream updates (git fetch, NO polling)
   cmds:
-    - vp/.bin/version-poller check-all
+    - vc/.bin/version-checker check {{.SUBSYSTEM | default "all"}}
 
 version:update:
   desc: Update subsystems with available updates
   cmds:
     - |
-      UPDATES=$(vp/.bin/version-poller check-all --json)
+      # This runs AFTER webhook trigger or manual check
+      UPDATES=$(vc/.bin/version-checker check --json)
       for subsystem in $(echo $UPDATES | jq -r '.[] | select(.update_available) | .name'); do
-        echo "Updating $subsystem..."
+        echo "▶ Updating $subsystem..."
         task $subsystem:src:update
         task $subsystem:bin:build
+        task bin:verify
         task reload PROC=$subsystem
       done
 
-version:auto:
-  desc: Automatically update and reload changed subsystems
+version:watch:
+  desc: Start webhook server to watch upstream repos
   cmds:
-    - task: version:check
-    - task: version:update
+    - task ghw:run  # Runs webhook server via Process Compose
 ```
 
-**CI Integration (.github/workflows/version-check.yml):**
+**NO SCHEDULED CI CHECKS!**
+- Webhooks notify us instantly when upstream changes
+- Manual `task version:check` for testing only
+- CI only builds/tests, doesn't poll versions
 
 ```yaml
 name: Version Check
@@ -202,33 +222,42 @@ jobs:
 - `task reload` works with auto-updated binaries
 - All version verification passes
 
-### Phase 3: CI Automation
-**Goal:** Scheduled version checks in CI
+### Phase 3: GitHub Webhooks (PRIMARY)
+**Goal:** Event-driven version updates - NO POLLING!
 
 **Tasks:**
-1. Add `.github/workflows/version-check.yml`
-2. Implement auto-PR creation for updates
-3. Run regression tests on version updates
-4. Add notifications (Discord/Slack)
+1. Implement webhook receiver using githubevents
+2. Add to Process Compose (runs as service)
+3. Configure webhooks on upstream repos (or forks)
+4. Test webhook → version:check → rebuild → reload flow
 
 **Success criteria:**
-- CI checks versions every 6 hours
-- Creates PR when updates available
-- Regression tests run before merge
+- Webhook server runs as PC service
+- Receives push/release events from upstream
+- Triggers `git fetch` + rebuild automatically
+- Hot-reloads updated service
+- Zero polling, instant updates
 
-### Phase 4: GitHub Webhooks (Optional)
-**Goal:** Real-time version updates
+### Phase 4: Webhook Deployment
+**Goal:** Production webhook hosting
 
-**Tasks:**
-1. Implement webhook receiver
-2. Deploy to server/cloud function
-3. Configure webhooks on upstream repos
-4. Trigger version poller on events
+**Options:**
+1. **Self-hosted:** Run webhook server alongside PC
+   - Pros: Full control, zero cost
+   - Cons: Need public endpoint (ngrok/cloudflare tunnel)
 
-**Success criteria:**
-- Receives GitHub webhook events
-- Triggers version check on push
-- Near-instant update detection
+2. **Cloud function:** Deploy to Cloudflare Workers/AWS Lambda
+   - Pros: Auto-scaling, built-in HTTPS
+   - Cons: Needs to trigger our server somehow
+
+3. **GitHub Actions:** Webhook triggers workflow dispatch
+   - Pros: No hosting needed
+   - Cons: Still need to notify our server
+
+**Recommended: Self-hosted + Cloudflare Tunnel**
+- Free, permanent public URL
+- Webhook server runs in PC
+- Zero polling, instant updates
 
 ## Version Manifest Schema
 
@@ -271,48 +300,59 @@ vars:
   VERSION_STRATEGY: tags  # or 'commits' or 'releases'
 ```
 
-The version poller reads these to know:
-- Where to check for updates
+The version checker reads these to know:
+- Where to run `git fetch`
 - What branch to track
 - Whether to follow tags/releases or latest commits
 
 ## Benefits
 
-1. **Automatic version detection** - No manual checking
-2. **Faster security updates** - Detect CVE fixes immediately
+1. **Event-driven updates** - Webhooks notify instantly, ZERO POLLING
+2. **Faster security updates** - Know within seconds of upstream push
 3. **Consistent versioning** - Git as single source of truth
-4. **CI integration** - Scheduled checks and auto-PRs
-5. **Real-time updates** - Optional webhooks for instant detection
-6. **Zero manual intervention** - Fully automated pipeline
+4. **Resource efficient** - No cron jobs, no background polling
+5. **Real-time updates** - Webhooks are the PRIMARY mechanism
+6. **Zero manual intervention** - Fully automated end-to-end
+7. **Integrates with hot-reload** - Auto rebuild + reload on upstream changes
 
 ## Migration Path
 
 ### Week 1: Foundation
-- Create `vp/` subsystem
-- Implement basic git polling
+- Create `vc/` subsystem
+- Implement `git fetch` based checking
 - Test with one subsystem (NATS)
 
-### Week 2: Integration
-- Add `version:check` and `version:update` tasks
-- Integrate with existing version verification
-- Test hot-reload workflow
+### Week 2: Webhook Server
+- Create `ghw/` subsystem using githubevents
+- Add to Process Compose
+- Test webhook → version:check flow
 
-### Week 3: CI Automation
-- Add scheduled version checks
-- Implement auto-PR creation
-- Run regression tests on updates
+### Week 3: Integration
+- Add `version:update` automation
+- Integrate with existing `bin:verify` system
+- Test webhook → rebuild → reload pipeline
 
 ### Week 4: Production
-- Enable for all subsystems
+- Setup Cloudflare Tunnel for public endpoint
+- Configure webhooks on upstream repos
 - Add monitoring/alerting
 - Document workflow in CLAUDE.md
 
 ## Open Questions
 
-1. **Rate limiting** - How to avoid GitHub API limits?
-   - Cache results locally
-   - Use conditional requests (If-None-Match)
-   - Personal access token with higher limits
+1. **Webhook source** - Watch upstream or forks?
+   - **Option A:** Configure webhooks on upstream repos (nats-io/nats-server)
+     - Pros: Direct notification
+     - Cons: Need permission from maintainers
+   - **Option B:** Fork repos and watch our forks
+     - Pros: Full control
+     - Cons: Need to keep forks in sync
+   - **Recommended:** Start with forks, request upstream webhooks later
+
+2. **Rate limiting** - Not an issue with webhooks!
+   - Webhooks push to us (not polling)
+   - `git fetch` only runs when notified
+   - Zero API rate limit concerns
 
 2. **Breaking changes** - How to detect incompatible updates?
    - Semver analysis (major version bumps)
