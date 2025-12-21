@@ -86,6 +86,48 @@ tasks:
       - pc:bin:download
       - telegraf:bin:download
 
+  bin:verify:
+    desc: Verify all binary versions match .version files
+    cmds:
+      - |
+        echo "=== Binary Version Verification ==="
+        ERRORS=0
+
+        for subsystem in arc liftbridge nats pc telegraf; do
+          if [ ! -f "$subsystem/.bin/.version" ]; then
+            echo "❌ $subsystem: No .version file"
+            ERRORS=$((ERRORS + 1))
+            continue
+          fi
+
+          echo "✓ $subsystem:"
+          cat "$subsystem/.bin/.version" | sed 's/^/  /'
+        done
+
+        if [ $ERRORS -gt 0 ]; then
+          echo ""
+          echo "❌ $ERRORS subsystems missing version files"
+          exit 1
+        else
+          echo ""
+          echo "✅ All binaries have version tracking"
+        fi
+
+  bin:versions:
+    desc: Show all binary versions (non-failing)
+    cmds:
+      - |
+        echo "=== Binary Versions ==="
+        for subsystem in arc liftbridge nats pc telegraf; do
+          echo "--- $subsystem ---"
+          if [ -f "$subsystem/.bin/.version" ]; then
+            cat "$subsystem/.bin/.version"
+          else
+            echo "No version file"
+          fi
+          echo ""
+        done
+
   logs:
     desc: "Tail logs for a process (usage: task logs PROC=nats)"
     cmds:
@@ -93,6 +135,8 @@ tasks:
 
   start:
     desc: Start all services with Process Compose
+    deps:
+      - bin:verify
     cmds:
       - task pc:run
 
@@ -103,6 +147,8 @@ tasks:
 
   start:fg:
     desc: Start all services in foreground (no TUI)
+    deps:
+      - bin:verify
     cmds:
       - task pc:run:fg
 
@@ -205,6 +251,7 @@ tasks:
     desc: CI build step - build all binaries
     cmds:
       - task: bin:build
+      - task: bin:verify
 
   ci:test:
     desc: CI test step - run regression tests
