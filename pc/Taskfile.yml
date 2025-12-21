@@ -62,7 +62,49 @@ tasks:
     status:
       - '! test -f {{.PC_SOCKET}}'
 
+  clean:data:
+    desc: No data directory for process-compose
+    cmds:
+      - echo "Process Compose has no data directory"
+
+  clean:src:
+    desc: No source directory for process-compose
+    cmds:
+      - echo "Process Compose has no source directory"
+
   clean:all:
     desc: Clean everything (socket)
     cmds:
       - rm -f {{.PC_SOCKET}}
+
+  bin:download:
+    desc: Process Compose is a system tool (no-op)
+    status:
+      - command -v process-compose
+    cmds:
+      - echo "Process Compose is installed via system package manager or go install"
+
+  src:clone:
+    desc: Process Compose has no source (no-op)
+    cmds:
+      - echo "Process Compose has no source to clone"
+
+  src:update:
+    desc: Process Compose has no source (no-op)
+    cmds:
+      - echo "Process Compose has no source to update"
+
+  build:
+    desc: Process Compose has no build step (no-op)
+    cmds:
+      - echo "Process Compose has no build step"
+
+  test:
+    desc: No tests for process-compose orchestration
+    cmds:
+      - echo "No tests for Process Compose orchestration"
+
+  deps:
+    desc: No dependencies for process-compose
+    cmds:
+      - echo "Process Compose has no dependencies"
