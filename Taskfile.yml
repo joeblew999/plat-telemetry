@@ -87,30 +87,62 @@ tasks:
       - telegraf:bin:download
 
   bin:verify:
-    desc: Verify all binary versions match .version files
+    desc: Verify all binary versions exist and checksums match
     cmds:
       - |
         echo "=== Binary Version Verification ==="
         ERRORS=0
 
+        # Map subsystem to binary name
+        declare -A BINARIES
+        BINARIES[arc]="arc"
+        BINARIES[liftbridge]="liftbridge"
+        BINARIES[nats]="nats-server"
+        BINARIES[pc]="process-compose"
+        BINARIES[telegraf]="telegraf"
+
         for subsystem in arc liftbridge nats pc telegraf; do
+          BINARY_NAME="${BINARIES[$subsystem]}"
+          BINARY_PATH="$subsystem/.bin/$BINARY_NAME"
+
+          # Check binary exists
+          if [ ! -f "$BINARY_PATH" ]; then
+            echo "❌ $subsystem: Binary not found at $BINARY_PATH"
+            ERRORS=$((ERRORS + 1))
+            continue
+          fi
+
+          # Check version file exists
           if [ ! -f "$subsystem/.bin/.version" ]; then
             echo "❌ $subsystem: No .version file"
             ERRORS=$((ERRORS + 1))
             continue
           fi
 
-          echo "✓ $subsystem:"
-          cat "$subsystem/.bin/.version" | sed 's/^/  /'
+          # Verify checksum matches
+          RECORDED_CHECKSUM=$(grep "^checksum:" "$subsystem/.bin/.version" | awk '{print $2}')
+          ACTUAL_CHECKSUM=$(shasum -a 256 "$BINARY_PATH" | awk '{print $1}')
+
+          if [ "$RECORDED_CHECKSUM" != "$ACTUAL_CHECKSUM" ]; then
+            echo "❌ $subsystem: Checksum mismatch!"
+            echo "  Recorded: $RECORDED_CHECKSUM"
+            echo "  Actual:   $ACTUAL_CHECKSUM"
+            echo "  → Binary modified after .version was created"
+            ERRORS=$((ERRORS + 1))
+            continue
+          fi
+
+          echo "✓ $subsystem: checksum verified"
         done
 
         if [ $ERRORS -gt 0 ]; then
           echo ""
-          echo "❌ $ERRORS subsystems missing version files"
+          echo "❌ $ERRORS subsystems have version issues"
+          echo "Run 'task bin:build' to rebuild affected binaries"
           exit 1
         else
           echo ""
-          echo "✅ All binaries have version tracking"
+          echo "✅ All binaries verified with matching checksums"
         fi
 
   bin:versions:
