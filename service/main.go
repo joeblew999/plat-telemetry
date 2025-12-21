@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/kardianos/service"
 )
@@ -82,6 +83,10 @@ func main() {
 		case "install":
 			err = s.Install()
 			if err != nil {
+				if strings.Contains(err.Error(), "already exists") {
+					log.Println("Service already installed")
+					return
+				}
 				log.Fatalf("Failed to install: %v", err)
 			}
 			log.Println("Service installed")
@@ -89,11 +94,21 @@ func main() {
 		case "uninstall":
 			err = s.Uninstall()
 			if err != nil {
+				if strings.Contains(err.Error(), "not installed") {
+					log.Println("Service not installed")
+					return
+				}
 				log.Fatalf("Failed to uninstall: %v", err)
 			}
 			log.Println("Service uninstalled")
 			return
 		case "start":
+			// Check if already running
+			status, _ := s.Status()
+			if status == service.StatusRunning {
+				log.Println("Service already running")
+				return
+			}
 			err = s.Start()
 			if err != nil {
 				log.Fatalf("Failed to start: %v", err)
@@ -101,6 +116,12 @@ func main() {
 			log.Println("Service started")
 			return
 		case "stop":
+			// Check if already stopped
+			status, _ := s.Status()
+			if status == service.StatusStopped {
+				log.Println("Service already stopped")
+				return
+			}
 			err = s.Stop()
 			if err != nil {
 				log.Fatalf("Failed to stop: %v", err)
