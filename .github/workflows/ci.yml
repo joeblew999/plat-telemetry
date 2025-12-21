@@ -16,19 +16,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  ci:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            goos: linux
-            goarch: amd64
-          - os: macos-latest
-            goos: darwin
-            goarch: arm64
+        os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
+
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'github-pages' || '' }}
+      url: ${{ github.ref == 'refs/heads/main' && steps.deployment.outputs.page_url || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -41,35 +39,38 @@ jobs:
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@latest
 
-      - name: Cache binaries
-        uses: actions/cache@v4
-        with:
-          path: |
-            nats/.bin
-            liftbridge/.bin
-            arc/.bin
-            telegraf/.bin
-          key: bins-${{ matrix.goos }}-${{ matrix.goarch }}-${{ hashFiles('*/Taskfile.yml') }}
+      - name: Run CI
+        run: task ci
 
-      - name: Clone and build
-        run: task bin:build
-
-      - name: Build and package binaries
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          task package GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
-          echo "DIST_DIR=$(task ci:dist)" >> $GITHUB_ENV
-
-      - name: Upload artifacts
+      # Artifact uploads (GitHub Actions specific)
+      - name: Upload release artifacts
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: ${{ env.DIST_DIR }}/
+          name: binaries-${{ runner.os }}-${{ runner.arch }}
+          path: .dist/
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ runner.os }}
+          path: .test-results/
+
+      - name: Upload pages artifact
+        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/.bin
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
+        id: deployment
+        uses: actions/deploy-pages@v4
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: ci
     runs-on: ubuntu-latest
 
     steps:
@@ -78,18 +79,18 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache: false
 
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@latest
 
-      - name: Get DIST_DIR from Taskfile
+      - name: Get DIST_DIR
         run: echo "DIST_DIR=$(task ci:dist)" >> $GITHUB_ENV
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: ${{ env.DIST_DIR }}
+          pattern: binaries-*
           merge-multiple: true
 
       - name: Create Release
@@ -97,36 +98,3 @@ jobs:
         with:
           files: ${{ env.DIST_DIR }}/*
           generate_release_notes: true
-
-  pages:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          cache: false
-
-      - name: Install Task
-        run: |
-          go install github.com/go-task/task/v3/cmd/task@latest
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-
-      - name: Build docs
-        run: task docs:build
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/.bin
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

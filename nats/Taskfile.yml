@@ -6,7 +6,7 @@ vars:
   NATS_SRC: '{{.TASKFILE_DIR}}/.src'
   NATS_BIN: '{{.TASKFILE_DIR}}/.bin'
   NATS_DATA: '{{.TASKFILE_DIR}}/.data'
-  NATS_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download
+  NATS_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
 env:
   GOWORK: off
@@ -38,6 +38,12 @@ tasks:
     cmds:
       - mkdir -p {{.NATS_BIN}}
       - go build -o {{.NATS_BIN}}/nats-server .
+      - |
+        {
+          echo "commit: $(git -C {{.NATS_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.NATS_BIN}}/nats-server | awk '{print $1}')"
+        } > {{.NATS_BIN}}/.version
 
   bin:download:
     desc: Download pre-built binary from release

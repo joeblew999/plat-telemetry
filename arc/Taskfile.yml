@@ -6,7 +6,7 @@ vars:
   ARC_SRC: '{{.TASKFILE_DIR}}/.src'
   ARC_BIN: '{{.TASKFILE_DIR}}/.bin'
   ARC_DATA: '{{.TASKFILE_DIR}}/.data'
-  ARC_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download
+  ARC_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
 env:
   GOWORK: off
@@ -38,6 +38,12 @@ tasks:
     cmds:
       - mkdir -p {{.ARC_BIN}}
       - go build -o {{.ARC_BIN}}/arc ./cmd/arc
+      - |
+        {
+          echo "commit: $(git -C {{.ARC_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.ARC_BIN}}/arc | awk '{print $1}')"
+        } > {{.ARC_BIN}}/.version
 
   bin:download:
     desc: Download pre-built binary from release

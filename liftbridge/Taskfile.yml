@@ -6,7 +6,7 @@ vars:
   LB_SRC: '{{.TASKFILE_DIR}}/.src'
   LB_BIN: '{{.TASKFILE_DIR}}/.bin'
   LB_DATA: '{{.TASKFILE_DIR}}/.data'
-  LB_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download
+  LB_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
 env:
   GOWORK: off
@@ -38,6 +38,12 @@ tasks:
     cmds:
       - mkdir -p {{.LB_BIN}}
       - go build -o {{.LB_BIN}}/liftbridge .
+      - |
+        {
+          echo "commit: $(git -C {{.LB_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.LB_BIN}}/liftbridge | awk '{print $1}')"
+        } > {{.LB_BIN}}/.version
 
   bin:download:
     desc: Download pre-built binary from release

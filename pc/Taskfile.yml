@@ -39,6 +39,12 @@ tasks:
     cmds:
       - mkdir -p {{.PC_BIN}}
       - go build -o {{.PC_BIN}}/process-compose .
+      - |
+        {
+          echo "commit: $(git -C {{.PC_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.PC_BIN}}/process-compose | awk '{print $1}')"
+        } > {{.PC_BIN}}/.version
 
   bin:download:
     desc: Download pre-built binary from release
@@ -49,7 +55,7 @@ tasks:
         sh: go env GOARCH
     cmds:
       - mkdir -p {{.PC_BIN}}
-      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download/process-compose-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.PC_BIN}}
+      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/process-compose-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.PC_BIN}}
       - echo "{{.RELEASE_VERSION}}" > {{.PC_BIN}}/.version
     status:
       - test -f {{.PC_BIN}}/process-compose

@@ -12,6 +12,9 @@
 bin/
 coverage.out
 coverage.html
+.dist/
+.test-results/
+Taskfile.yml.backup
 
 # Config files with secrets
 *.local.toml

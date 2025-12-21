@@ -37,6 +37,12 @@ tasks:
     cmds:
       - mkdir -p {{.GH_BIN}}
       - go build -o {{.GH_BIN}}/gh ./cmd/gh
+      - |
+        {
+          echo "commit: $(git -C {{.GH_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.GH_BIN}}/gh | awk '{print $1}')"
+        } > {{.GH_BIN}}/.version
 
   bin:download:
     desc: Download pre-built binary from release
@@ -47,7 +53,7 @@ tasks:
         sh: go env GOARCH
     cmds:
       - mkdir -p {{.GH_BIN}}
-      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download/gh-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GH_BIN}}
+      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/gh-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GH_BIN}}
       - echo "{{.RELEASE_VERSION}}" > {{.GH_BIN}}/.version
     status:
       - test -f {{.GH_BIN}}/gh

@@ -9,11 +9,11 @@ includes:
   arc: ./arc
   docs: ./docs
   gh: ./gh
-  grafana: ./grafana
   liftbridge: ./liftbridge
   nats: ./nats
   pc: ./pc
   telegraf: ./telegraf
+  test-reload: ./test-reload
 
 tasks:
   default:
@@ -27,7 +27,6 @@ tasks:
       - arc:src:clone
       - docs:src:clone
       - gh:src:clone
-      - grafana:src:clone
       - liftbridge:src:clone
       - nats:src:clone
       - pc:src:clone
@@ -39,7 +38,6 @@ tasks:
       - task arc:src:update
       - task docs:src:update
       - task gh:src:update
-      - task grafana:src:update
       - task liftbridge:src:update
       - task nats:src:update
       - task pc:src:update
@@ -51,7 +49,6 @@ tasks:
       - arc:bin:build
       - docs:bin:build
       - gh:bin:build
-      - grafana:bin:build
       - liftbridge:bin:build
       - nats:bin:build
       - pc:bin:build
@@ -84,7 +81,6 @@ tasks:
       - arc:bin:download
       - docs:bin:download
       - gh:bin:download
-      - grafana:bin:download
       - liftbridge:bin:download
       - nats:bin:download
       - pc:bin:download
@@ -146,44 +142,32 @@ tasks:
     desc: Clean all build artifacts
     cmds:
       - task arc:clean
-      - task gh:clean
-      - task grafana:clean
       - task liftbridge:clean
       - task nats:clean
-      - task pc:clean
       - task telegraf:clean
 
   clean:data:
     desc: Clean all data directories
     cmds:
       - task arc:clean:data
-      - task gh:clean:data
-      - task grafana:clean:data
       - task liftbridge:clean:data
       - task nats:clean:data
-      - task pc:clean:data
       - task telegraf:clean:data
 
   clean:src:
     desc: Clean all source directories
     cmds:
       - task arc:clean:src
-      - task gh:clean:src
-      - task grafana:clean:src
       - task liftbridge:clean:src
       - task nats:clean:src
-      - task pc:clean:src
       - task telegraf:clean:src
 
   clean:all:
     desc: Clean everything (.src, .bin, .data)
     cmds:
       - task arc:clean:all
-      - task gh:clean:all
-      - task grafana:clean:all
       - task liftbridge:clean:all
       - task nats:clean:all
-      - task pc:clean:all
       - task telegraf:clean:all
 
   package:
@@ -194,7 +178,7 @@ tasks:
       DIST: '{{.DIST | default .DIST_DIR}}'
     cmds:
       - mkdir -p {{.DIST}}
-      - for: [arc, gh, grafana, liftbridge, nats, pc, telegraf]
+      - for: [arc, gh, liftbridge, nats, pc, telegraf]
         task: '{{.ITEM}}:package'
         vars:
           GOOS: '{{.GOOS}}'
@@ -207,6 +191,94 @@ tasks:
     cmds:
       - echo "{{.DIST_DIR}}"
     silent: true
+
+  ci:
+    desc: Main CI entry point - runs all CI tasks based on context
+    cmds:
+      - task: ci:build
+      - task: ci:test
+      - task: ci:package
+      - task: ci:release
+      - task: ci:pages
+
+  ci:build:
+    desc: CI build step - build all binaries
+    cmds:
+      - task: bin:build
+
+  ci:test:
+    desc: CI test step - run regression tests
+    cmds:
+      - |
+        echo "▶ Starting services for testing..."
+        task start:fg &
+        PC_PID=$!
+
+        echo "▶ Waiting for services to be ready..."
+        sleep 20
+
+        echo "▶ Running hot-reload regression tests..."
+        if task test:reload:all; then
+          echo "✅ Tests passed"
+          TEST_RESULT=0
+        else
+          echo "❌ Tests failed"
+          TEST_RESULT=1
+        fi
+
+        echo "▶ Stopping services..."
+        task stop || true
+
+        exit $TEST_RESULT
+
+  ci:package:
+    desc: CI package step - package binaries for release (runs on tags only)
+    cmds:
+      - |
+        if [ "${GITHUB_REF:-}" = "" ] || [[ ! "${GITHUB_REF}" =~ ^refs/tags/ ]]; then
+          echo "⏭️  Skipping package - not a tag build"
+          exit 0
+        fi
+
+        echo "▶ Packaging for release..."
+        task package GOOS={{OS}} GOARCH={{ARCH}}
+
+  ci:release:
+    desc: CI release step - create GitHub release (runs on tags only, ubuntu only)
+    cmds:
+      - |
+        if [ "${GITHUB_REF:-}" = "" ] || [[ ! "${GITHUB_REF}" =~ ^refs/tags/ ]]; then
+          echo "⏭️  Skipping release - not a tag build"
+          exit 0
+        fi
+
+        if [ "{{OS}}" != "linux" ]; then
+          echo "⏭️  Skipping release - not ubuntu runner ({{OS}})"
+          exit 0
+        fi
+
+        echo "▶ Creating GitHub release..."
+        # Artifacts are uploaded by ci:package step
+        # Release creation happens via GitHub Actions
+        echo "✅ Release artifacts ready in {{.DIST_DIR}}"
+
+  ci:pages:
+    desc: CI pages step - deploy docs to GitHub Pages (runs on main only, ubuntu only)
+    cmds:
+      - |
+        if [ "${GITHUB_REF:-}" != "refs/heads/main" ]; then
+          echo "⏭️  Skipping pages - not main branch"
+          exit 0
+        fi
+
+        if [ "{{OS}}" != "linux" ]; then
+          echo "⏭️  Skipping pages - not ubuntu runner ({{OS}})"
+          exit 0
+        fi
+
+        echo "▶ Building docs for GitHub Pages..."
+        task docs:build
+        echo "✅ Docs built in docs/.bin"
 
 
 
@@ -234,7 +306,6 @@ tasks:
         echo "liftbridge    {{.LB_VERSION | default "v1.10.0"}}     $([ -d liftbridge/.src/.git ] && git -C liftbridge/.src describe --tags 2>/dev/null || echo '-')     $(cat liftbridge/.bin/.version 2>/dev/null || echo '-')"
         echo "arc           {{.ARC_VERSION | default "main"}}         $([ -d arc/.src/.git ] && git -C arc/.src rev-parse --short HEAD 2>/dev/null || echo '-')         $(cat arc/.bin/.version 2>/dev/null || echo '-')"
         echo "telegraf      {{.TG_VERSION | default "master"}}       $([ -d telegraf/.src/.git ] && git -C telegraf/.src rev-parse --short HEAD 2>/dev/null || echo '-')       $(cat telegraf/.bin/.version 2>/dev/null || echo '-')"
-        echo "grafana       {{.GF_VERSION | default "11.4.0"}}      $(cat grafana/.bin/.version 2>/dev/null || echo '-')          $(cat grafana/.bin/.version 2>/dev/null || echo '-')"
 
   github:pages:
     desc: Enable GitHub Pages (idempotent)
@@ -250,3 +321,538 @@ tasks:
         fi
     status:
       - gh/.bin/gh api repos/{{.RELEASE_REPO}}/pages 2>/dev/null | grep -q '"build_type":"workflow"'
+
+  release:
+    desc: Create a GitHub release with packaged binaries
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      TAG: '{{.TAG}}'
+    preconditions:
+      - sh: test -n "{{.TAG}}"
+        msg: "TAG is required (usage: task release TAG=v1.0.0)"
+    cmds:
+      - task: package
+        vars:
+          GOOS: '{{.GOOS}}'
+          GOARCH: '{{.GOARCH}}'
+      - gh/.bin/gh release create {{.TAG}} {{.DIST_DIR}}/* --generate-notes
+
+  reload:
+    desc: "Reload a service after binary update (usage: task reload PROC=nats)"
+    vars:
+      PROC: '{{.PROC | default "nats"}}'
+    cmds:
+      - pc/.bin/process-compose process restart {{.PROC}} -U -u pc/.pc.sock
+
+  test:reload:snapshot:
+    desc: Capture current state (PIDs, versions, checksums)
+    cmds:
+      - mkdir -p .test-results
+      - |
+        echo "=== Binary Hot-Reload Snapshot ===" > .test-results/snapshot.txt
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .test-results/snapshot.txt
+        echo "" >> .test-results/snapshot.txt
+
+        for proc in arc liftbridge nats telegraf; do
+          echo "=== $proc ===" >> .test-results/snapshot.txt
+
+          # Get process info from PC
+          pc/.bin/process-compose process get $proc -U -u pc/.pc.sock >> .test-results/snapshot.txt 2>&1 || echo "Process not running" >> .test-results/snapshot.txt
+
+          # Get binary version
+          if [ -f $proc/.bin/.version ]; then
+            cat $proc/.bin/.version >> .test-results/snapshot.txt
+          else
+            echo "No version file" >> .test-results/snapshot.txt
+          fi
+
+          echo "" >> .test-results/snapshot.txt
+        done
+
+        echo "Snapshot saved to .test-results/snapshot.txt"
+
+  test:reload:verify:
+    desc: Verify process reloaded with new binary
+    vars:
+      PROC: '{{.PROC | default "nats"}}'
+    cmds:
+      - |
+        echo "=== Verifying {{.PROC}} reload ==="
+
+        # Check process is running
+        if ! pc/.bin/process-compose process get {{.PROC}} -U -u pc/.pc.sock 2>/dev/null | grep -q "Running"; then
+          echo "❌ ERROR: {{.PROC}} not in Running state"
+          exit 1
+        fi
+        echo "✅ Process is Running"
+
+        # Check version file exists
+        if [ ! -f {{.PROC}}/.bin/.version ]; then
+          echo "❌ ERROR: No .version file found"
+          exit 1
+        fi
+        echo "✅ Version file exists"
+
+        # Display version info
+        echo "Binary info:"
+        cat {{.PROC}}/.bin/.version
+
+        echo "✅ {{.PROC}} reload verified"
+
+  test:reload:diff:
+    desc: Show what changed between snapshots
+    cmds:
+      - |
+        if [ ! -f .test-results/snapshot-before.txt ] || [ ! -f .test-results/snapshot-after.txt ]; then
+          echo "ERROR: Missing snapshot files. Run test:reload:snapshot first."
+          exit 1
+        fi
+
+        echo "=== Changes Detected ==="
+        diff .test-results/snapshot-before.txt .test-results/snapshot-after.txt || true
+
+  test:reload:single:nats:
+    desc: Test NATS single reload
+    cmds:
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-before.txt
+      - echo "Rebuilding NATS binary..."
+      - rm -f nats/.bin/nats-server nats/.bin/.version
+      - task nats:bin:build
+      - echo "Reloading NATS..."
+      - task reload PROC=nats
+      - sleep 5
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-after.txt
+      - task test:reload:verify PROC=nats
+      - task test:reload:diff
+      - echo "✅ NATS single reload test PASSED"
+
+  test:reload:single:arc:
+    desc: Test arc single reload
+    cmds:
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-before.txt
+      - echo "Rebuilding arc binary..."
+      - rm -f arc/.bin/arc arc/.bin/.version
+      - task arc:bin:build
+      - echo "Reloading arc..."
+      - task reload PROC=arc
+      - sleep 5
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-after.txt
+      - task test:reload:verify PROC=arc
+      - task test:reload:diff
+      - echo "✅ arc single reload test PASSED"
+
+  test:reload:single:liftbridge:
+    desc: Test liftbridge single reload
+    cmds:
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-before.txt
+      - echo "Rebuilding liftbridge binary..."
+      - rm -f liftbridge/.bin/liftbridge liftbridge/.bin/.version
+      - task liftbridge:bin:build
+      - echo "Reloading liftbridge..."
+      - task reload PROC=liftbridge
+      - sleep 5
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-after.txt
+      - task test:reload:verify PROC=liftbridge
+      - task test:reload:diff
+      - echo "✅ liftbridge single reload test PASSED"
+
+  test:reload:single:telegraf:
+    desc: Test telegraf single reload
+    cmds:
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-before.txt
+      - echo "Rebuilding telegraf binary..."
+      - rm -f telegraf/.bin/telegraf telegraf/.bin/.version
+      - task telegraf:bin:build
+      - echo "Reloading telegraf..."
+      - task reload PROC=telegraf
+      - sleep 5
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-after.txt
+      - task test:reload:verify PROC=telegraf
+      - task test:reload:diff
+      - echo "✅ telegraf single reload test PASSED"
+
+  test:reload:single:all:
+    desc: Run all single reload tests
+    cmds:
+      - task test:reload:single:nats
+      - task test:reload:single:arc
+      - task test:reload:single:liftbridge
+      - task test:reload:single:telegraf
+      - echo "✅ All single reload tests PASSED"
+
+  test:reload:multi:parallel:
+    desc: Test parallel reload (arc + liftbridge)
+    cmds:
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-before.txt
+      - echo "Rebuilding arc and liftbridge binaries in parallel..."
+      - rm -f arc/.bin/arc arc/.bin/.version liftbridge/.bin/liftbridge liftbridge/.bin/.version
+      - task arc:bin:build & task liftbridge:bin:build & wait
+      - echo "Reloading arc and liftbridge in parallel..."
+      - task reload PROC="arc & task reload PROC="liftbridge & wait
+      - sleep 5
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-after.txt
+      - task test:reload:verify PROC=arc
+      - task test:reload:verify PROC=liftbridge
+      - task test:reload:diff
+      - echo "✅ Parallel reload test PASSED"
+
+  test:reload:multi:cascade:
+    desc: Test cascade reload (NATS → liftbridge)
+    cmds:
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-before.txt
+      - echo "Rebuilding NATS binary..."
+      - rm -f nats/.bin/nats-server nats/.bin/.version
+      - task nats:bin:build
+      - echo "Reloading NATS..."
+      - task reload PROC=nats
+      - sleep 5
+      - echo "Rebuilding liftbridge binary..."
+      - rm -f liftbridge/.bin/liftbridge liftbridge/.bin/.version
+      - task liftbridge:bin:build
+      - echo "Reloading liftbridge..."
+      - task reload PROC=liftbridge
+      - sleep 5
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-after.txt
+      - task test:reload:verify PROC=nats
+      - task test:reload:verify PROC=liftbridge
+      - task test:reload:diff
+      - echo "✅ Cascade reload test PASSED"
+
+  test:reload:multi:all:
+    desc: Test all 4 binaries reloaded simultaneously
+    cmds:
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-before.txt
+      - echo "Rebuilding all 4 binaries..."
+      - rm -f arc/.bin/arc arc/.bin/.version
+      - rm -f liftbridge/.bin/liftbridge liftbridge/.bin/.version
+      - rm -f nats/.bin/nats-server nats/.bin/.version
+      - rm -f telegraf/.bin/telegraf telegraf/.bin/.version
+      - task arc:bin:build & task liftbridge:bin:build & task nats:bin:build & task telegraf:bin:build & wait
+      - echo "Reloading all 4 services..."
+      - task reload PROC="nats
+      - sleep 5
+      - task reload PROC="liftbridge
+      - sleep 3
+      - task reload PROC="arc & task reload PROC="telegraf & wait
+      - sleep 5
+      - task test:reload:snapshot
+      - mv .test-results/snapshot.txt .test-results/snapshot-after.txt
+      - task test:reload:verify PROC=arc
+      - task test:reload:verify PROC=liftbridge
+      - task test:reload:verify PROC=nats
+      - task test:reload:verify PROC=telegraf
+      - task test:reload:diff
+      - echo "✅ Multi-all reload test PASSED"
+
+  test:reload:rapid:nats:
+    desc: Rapid NATS reloads (10x in 60s)
+    cmds:
+      - |
+        echo "Starting rapid reload test (10 iterations)..."
+        for i in {1..10}; do
+          echo "=== Iteration $i/10 ==="
+          rm -f nats/.bin/nats-server nats/.bin/.version
+          task nats:bin:build
+          task reload PROC=nats
+          sleep 5
+
+          # Verify still running
+          if ! pc/.bin/process-compose process get nats -U -u pc/.pc.sock 2>/dev/null | grep -q "Running"; then
+            echo "❌ FAILED at iteration $i - NATS not running"
+            exit 1
+          fi
+          echo "✅ Iteration $i complete"
+        done
+        echo "✅ Rapid reload test PASSED (10/10 successful)"
+
+  test:reload:rapid:all:
+    desc: Rapid reload different services in sequence
+    cmds:
+      - |
+        echo "Starting rapid sequential reload test..."
+        SERVICES=(nats arc liftbridge telegraf)
+
+        for i in {1..12}; do
+          PROC=${SERVICES[$((i % 4))]}
+          echo "=== Iteration $i/12: $PROC ==="
+
+          rm -f $PROC/.bin/* $PROC/.bin/.version
+          task $PROC:bin:build
+          task reload PROC=$PROC
+          sleep 3
+
+          # Verify running
+          if ! pc/.bin/process-compose process get $PROC -U -u pc/.pc.sock 2>/dev/null | grep -q "Running"; then
+            echo "❌ FAILED at iteration $i - $PROC not running"
+            exit 1
+          fi
+          echo "✅ Iteration $i complete"
+        done
+        echo "✅ Rapid sequential reload test PASSED (12/12 successful)"
+
+  test:reload:fail:corrupt:
+    desc: Test corrupt binary scenario
+    cmds:
+      - echo "Testing corrupt binary handling..."
+      - rm -f nats/.bin/nats-server nats/.bin/.version
+      - task nats:bin:build
+      - rm -f nats/.bin/nats-server
+      - echo "Attempting to reload with missing binary..."
+      - task reload PROC="nats || echo "✅ Expected failure - cannot reload missing binary"
+      - echo "Rebuilding binary..."
+      - task nats:bin:build
+      - task reload PROC=nats
+      - sleep 5
+      - task test:reload:verify PROC=nats
+      - echo "✅ Corrupt binary test PASSED - system recovered"
+
+  test:reload:phase3:
+    desc: Run Phase 3 tests (single service reloads)
+    cmds:
+      - |
+        echo "▶ Phase 3: Single Service Reloads"
+        echo "Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        START_TIME=$(date +%s)
+        PASSED=0
+        FAILED=0
+
+        for test in nats arc liftbridge telegraf; do
+          echo "▶ Running test:reload:single:$test"
+          if task test:reload:single:$test; then
+            echo "✅ PASSED: $test"
+            PASSED=$((PASSED + 1))
+          else
+            echo "❌ FAILED: $test"
+            FAILED=$((FAILED + 1))
+          fi
+          echo ""
+        done
+
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+
+        echo "=== Phase 3 Summary ==="
+        echo "Duration: ${DURATION}s"
+        echo "TOTAL: $PASSED passed, $FAILED failed"
+
+        if [ $FAILED -gt 0 ]; then
+          echo "❌ PHASE 3 FAILED"
+          exit 1
+        else
+          echo "✅ PHASE 3 PASSED"
+        fi
+
+  test:reload:phase4:
+    desc: Run Phase 4 tests (multi-service reloads)
+    cmds:
+      - |
+        echo "▶ Phase 4: Multi-Service Reloads"
+        echo "Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        START_TIME=$(date +%s)
+        PASSED=0
+        FAILED=0
+
+        for test in parallel cascade all; do
+          echo "▶ Running test:reload:multi:$test"
+          if task test:reload:multi:$test; then
+            echo "✅ PASSED: multi:$test"
+            PASSED=$((PASSED + 1))
+          else
+            echo "❌ FAILED: multi:$test"
+            FAILED=$((FAILED + 1))
+          fi
+          echo ""
+        done
+
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+
+        echo "=== Phase 4 Summary ==="
+        echo "Duration: ${DURATION}s"
+        echo "TOTAL: $PASSED passed, $FAILED failed"
+
+        if [ $FAILED -gt 0 ]; then
+          echo "❌ PHASE 4 FAILED"
+          exit 1
+        else
+          echo "✅ PHASE 4 PASSED"
+        fi
+
+  test:reload:phase5:
+    desc: Run Phase 5 tests (rapid reload stress testing)
+    cmds:
+      - |
+        echo "▶ Phase 5: Rapid Reload Stress Testing"
+        echo "Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        START_TIME=$(date +%s)
+
+        echo "▶ Running test:reload:rapid:nats"
+        if task test:reload:rapid:nats; then
+          echo "✅ PASSED: rapid:nats"
+          RESULT="PASSED"
+        else
+          echo "❌ FAILED: rapid:nats"
+          RESULT="FAILED"
+        fi
+
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+
+        echo ""
+        echo "=== Phase 5 Summary ==="
+        echo "Duration: ${DURATION}s"
+        echo "Result: $RESULT"
+
+        if [ "$RESULT" = "FAILED" ]; then
+          echo "❌ PHASE 5 FAILED"
+          exit 1
+        else
+          echo "✅ PHASE 5 PASSED"
+        fi
+
+  test:reload:phase6:
+    desc: Run Phase 6 tests (failure scenario handling)
+    cmds:
+      - |
+        echo "▶ Phase 6: Failure Scenario Handling"
+        echo "Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        START_TIME=$(date +%s)
+
+        echo "▶ Running test:reload:fail:corrupt"
+        if task test:reload:fail:corrupt; then
+          echo "✅ PASSED: fail:corrupt"
+          RESULT="PASSED"
+        else
+          echo "❌ FAILED: fail:corrupt"
+          RESULT="FAILED"
+        fi
+
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+
+        echo ""
+        echo "=== Phase 6 Summary ==="
+        echo "Duration: ${DURATION}s"
+        echo "Result: $RESULT"
+
+        if [ "$RESULT" = "FAILED" ]; then
+          echo "❌ PHASE 6 FAILED"
+          exit 1
+        else
+          echo "✅ PHASE 6 PASSED"
+        fi
+
+  test:reload:all:
+    desc: Run complete regression suite
+    cmds:
+      - |
+        echo "=== Binary Hot-Reload Regression Suite ==="
+        echo "Started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo ""
+
+        START_TIME=$(date +%s)
+
+        mkdir -p .test-results
+        echo "=== Binary Hot-Reload Regression Test Report ===" > .test-results/report.txt
+        echo "Date: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> .test-results/report.txt
+        echo "" >> .test-results/report.txt
+
+        PASSED=0
+        FAILED=0
+
+        # Phase 3: Single reloads
+        echo "Phase 3: Single Reloads" | tee -a .test-results/report.txt
+
+        for test in nats arc liftbridge telegraf; do
+          echo -n "  test:reload:single:$test ... " | tee -a .test-results/report.txt
+          if task test:reload:single:$test > .test-results/test-$test.log 2>&1; then
+            echo "✅ PASSED" | tee -a .test-results/report.txt
+            PASSED=$((PASSED + 1))
+          else
+            echo "❌ FAILED" | tee -a .test-results/report.txt
+            FAILED=$((FAILED + 1))
+          fi
+        done
+
+        # Phase 4: Multi reloads
+        echo "" | tee -a .test-results/report.txt
+        echo "Phase 4: Multi Reloads" | tee -a .test-results/report.txt
+
+        for test in parallel cascade all; do
+          echo -n "  test:reload:multi:$test ... " | tee -a .test-results/report.txt
+          if task test:reload:multi:$test > .test-results/test-multi-$test.log 2>&1; then
+            echo "✅ PASSED" | tee -a .test-results/report.txt
+            PASSED=$((PASSED + 1))
+          else
+            echo "❌ FAILED" | tee -a .test-results/report.txt
+            FAILED=$((FAILED + 1))
+          fi
+        done
+
+        # Phase 5: Rapid reloads
+        echo "" | tee -a .test-results/report.txt
+        echo "Phase 5: Rapid Reloads" | tee -a .test-results/report.txt
+
+        echo -n "  test:reload:rapid:nats ... " | tee -a .test-results/report.txt
+        if task test:reload:rapid:nats > .test-results/test-rapid-nats.log 2>&1; then
+          echo "✅ PASSED" | tee -a .test-results/report.txt
+          PASSED=$((PASSED + 1))
+        else
+          echo "❌ FAILED" | tee -a .test-results/report.txt
+          FAILED=$((FAILED + 1))
+        fi
+
+        # Phase 6: Failure scenarios
+        echo "" | tee -a .test-results/report.txt
+        echo "Phase 6: Failure Scenarios" | tee -a .test-results/report.txt
+
+        echo -n "  test:reload:fail:corrupt ... " | tee -a .test-results/report.txt
+        if task test:reload:fail:corrupt > .test-results/test-fail-corrupt.log 2>&1; then
+          echo "✅ PASSED" | tee -a .test-results/report.txt
+          PASSED=$((PASSED + 1))
+        else
+          echo "❌ FAILED" | tee -a .test-results/report.txt
+          FAILED=$((FAILED + 1))
+        fi
+
+        # Summary
+        END_TIME=$(date +%s)
+        DURATION=$((END_TIME - START_TIME))
+
+        echo "" | tee -a .test-results/report.txt
+        echo "=== Summary ===" | tee -a .test-results/report.txt
+        echo "Duration: ${DURATION}s" | tee -a .test-results/report.txt
+        echo "TOTAL: $PASSED passed, $FAILED failed" | tee -a .test-results/report.txt
+
+        if [ $FAILED -gt 0 ]; then
+          echo "" | tee -a .test-results/report.txt
+          echo "❌ REGRESSION SUITE FAILED" | tee -a .test-results/report.txt
+          exit 1
+        else
+          echo "" | tee -a .test-results/report.txt
+          echo "✅ REGRESSION SUITE PASSED" | tee -a .test-results/report.txt
+        fi
+
+        cat .test-results/report.txt

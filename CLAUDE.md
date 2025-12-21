@@ -86,3 +86,47 @@ This makes scanning and finding subsystems easy and keeps everything predictable
 ## Go-Specific
 
 Use `GOWORK: off` for Go builds.
+
+## Workflows
+
+### DEV Workflow (build from source)
+```bash
+# Clone and build all subsystems
+task src:clone
+task bin:build
+
+# Start all services
+task start:fg
+
+# Make code changes, rebuild specific subsystem
+task nats:bin:build
+
+# Hot-reload the service (in another terminal)
+task reload PROC=nats
+```
+
+### USER Workflow (download binaries)
+```bash
+# Download all pre-built binaries from latest release
+task bin:download
+
+# Start all services
+task start:fg
+
+# Download updated binary for one subsystem
+task nats:bin:download
+
+# Hot-reload the service (in another terminal)
+task reload PROC=nats
+```
+
+### Binary Hot-Reload
+When binaries change (via `bin:build` or `bin:download`), Process Compose doesn't auto-detect changes. Use `task reload PROC=<name>` to restart a service and load the new binary:
+
+```bash
+# After downloading or building a new binary
+task reload PROC=nats       # Restart NATS with new binary
+task reload PROC=telegraf   # Restart telegraf with new binary
+```
+
+This works because Process Compose maintains a Unix socket for API control (`pc/.pc.sock`) when running.

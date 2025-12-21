@@ -17,20 +17,6 @@ processes:
       initial_delay_seconds: 3
       period_seconds: 5
 
-  grafana:
-    command: task grafana:run
-    working_dir: .
-    depends_on:
-      arc:
-        condition: process_healthy
-    availability:
-      restart: on_failure
-      backoff_seconds: 5
-    readiness_probe:
-      exec:
-        command: task grafana:health
-      initial_delay_seconds: 5
-      period_seconds: 5
 
   hugo:
     command: task docs:run
@@ -41,7 +27,7 @@ processes:
     readiness_probe:
       exec:
         command: task docs:health
-      initial_delay_seconds: 2
+      initial_delay_seconds: 5
       period_seconds: 5
 
   liftbridge:

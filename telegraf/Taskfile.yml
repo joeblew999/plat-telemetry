@@ -6,7 +6,7 @@ vars:
   TG_SRC: '{{.TASKFILE_DIR}}/.src'
   TG_BIN: '{{.TASKFILE_DIR}}/.bin'
   TG_DATA: '{{.TASKFILE_DIR}}/.data'
-  TG_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download
+  TG_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
 env:
   GOWORK: off
@@ -39,6 +39,12 @@ tasks:
       - mkdir -p {{.TG_BIN}}
       - make build
       - cp telegraf {{.TG_BIN}}/
+      - |
+        {
+          echo "commit: $(git -C {{.TG_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.TG_BIN}}/telegraf | awk '{print $1}')"
+        } > {{.TG_BIN}}/.version
 
   bin:download:
     desc: Download pre-built binary from release

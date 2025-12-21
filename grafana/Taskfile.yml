@@ -41,7 +41,7 @@ tasks:
         sh: go env GOARCH
     cmds:
       - mkdir -p {{.GF_BIN}}
-      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download/grafana-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GF_BIN}}
+      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/grafana-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GF_BIN}}
       - echo "{{.RELEASE_VERSION}}" > {{.GF_BIN}}/.version
     status:
       - test -f {{.GF_BIN}}/bin/grafana-server
