@@ -514,7 +514,9 @@ tasks:
     vars:
       PROC: '{{.PROC | default "nats"}}'
     cmds:
-      - pc/.bin/process-compose process restart {{.PROC}} -U -u pc/.pc.sock
+      - pc/.bin/process-compose process stop {{.PROC}} -U -u pc/.pc.sock
+      - sleep 2
+      - pc/.bin/process-compose process start {{.PROC}} -U -u pc/.pc.sock
 
   test:reload:snapshot:
     desc: Capture current state (PIDs, versions, checksums)

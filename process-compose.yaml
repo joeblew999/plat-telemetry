@@ -36,9 +36,11 @@ processes:
     depends_on:
       nats:
         condition: process_healthy
+    shutdown:
+      timeout_seconds: 5
     availability:
       restart: on_failure
-      backoff_seconds: 5
+      backoff_seconds: 3
     readiness_probe:
       exec:
         command: task liftbridge:health
@@ -48,9 +50,11 @@ processes:
   nats:
     command: task nats:run
     working_dir: .
+    shutdown:
+      timeout_seconds: 5
     availability:
       restart: on_failure
-      backoff_seconds: 5
+      backoff_seconds: 3
     readiness_probe:
       exec:
         command: task nats:health
