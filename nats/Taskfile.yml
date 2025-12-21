@@ -12,6 +12,7 @@ env:
   GOWORK: off
 
 tasks:
+  # src: tasks
   src:clone:
     desc: Clone the upstream repository at pinned version
     cmds:
@@ -27,7 +28,8 @@ tasks:
       - git fetch --tags
       - git checkout {{.NATS_VERSION}}
 
-  build:
+  # bin: tasks
+  bin:build:
     desc: Build nats-server binary
     deps: [src:clone]
     dir: '{{.NATS_SRC}}'
@@ -36,70 +38,6 @@ tasks:
     cmds:
       - mkdir -p {{.NATS_BIN}}
       - go build -o {{.NATS_BIN}}/nats-server .
-
-  run:
-    desc: Run nats-server
-    dir: '{{.TASKFILE_DIR}}'
-    deps: [ensure]
-    cmds:
-      - mkdir -p {{.NATS_DATA}}
-      - '{{.NATS_BIN}}/nats-server --config nats.conf'
-
-  ensure:
-    desc: Ensure binary exists (build or download)
-    status:
-      - test -f {{.NATS_BIN}}/nats-server
-    cmds:
-      - task: bin:download
-
-  test:
-    desc: Run tests
-    deps: [src:clone]
-    dir: '{{.NATS_SRC}}'
-    cmds:
-      - go test -v ./...
-
-  install:
-    desc: Install nats-server binary
-    deps: [src:clone]
-    dir: '{{.NATS_SRC}}'
-    cmds:
-      - go install .
-
-  deps:
-    desc: Download dependencies
-    deps: [src:clone]
-    dir: '{{.NATS_SRC}}'
-    cmds:
-      - go mod download
-    status:
-      - test -d {{.NATS_SRC}}/vendor || go list -m all >/dev/null 2>&1
-
-  clean:
-    desc: Clean build artifacts
-    cmds:
-      - rm -rf {{.NATS_BIN}}
-    status:
-      - '! test -d {{.NATS_BIN}}'
-
-  clean:data:
-    desc: Clean data directory
-    cmds:
-      - rm -rf {{.NATS_DATA}}
-    status:
-      - '! test -d {{.NATS_DATA}}'
-
-  clean:src:
-    desc: Clean source directory
-    cmds:
-      - rm -rf {{.NATS_SRC}}
-    status:
-      - '! test -d {{.NATS_SRC}}'
-
-  clean:all:
-    desc: Clean everything (.src, .bin, .data)
-    cmds:
-      - rm -rf {{.NATS_SRC}} {{.NATS_BIN}} {{.NATS_DATA}}
 
   bin:download:
     desc: Download pre-built binary from release
@@ -114,3 +52,93 @@ tasks:
       - echo "{{.RELEASE_VERSION}}" > {{.NATS_BIN}}/.version
     status:
       - test -f {{.NATS_BIN}}/nats-server
+
+  # dev: tasks
+  dev:run:
+    desc: Run nats-server from source (development mode)
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    cmds:
+      - mkdir -p {{.NATS_DATA}}
+      - go run . --config {{.TASKFILE_DIR}}/nats.conf
+
+  # Service tasks
+  deps:
+    desc: Download dependencies
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    cmds:
+      - go mod download
+    status:
+      - test -d {{.NATS_SRC}}/vendor || go list -m all >/dev/null 2>&1
+
+  ensure:
+    desc: Ensure binary exists (build or download)
+    status:
+      - test -f {{.NATS_BIN}}/nats-server
+    cmds:
+      - task: bin:download
+
+  health:
+    desc: Check if NATS is healthy
+    cmds:
+      - curl -sf http://localhost:8222/healthz > /dev/null
+
+  install:
+    desc: Install nats-server binary
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    cmds:
+      - go install .
+
+  run:
+    desc: Run nats-server binary
+    dir: '{{.TASKFILE_DIR}}'
+    deps: [ensure]
+    cmds:
+      - mkdir -p {{.NATS_DATA}}
+      - '{{.NATS_BIN}}/nats-server --config nats.conf'
+
+  test:
+    desc: Run tests
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    cmds:
+      - go test -v ./...
+
+  package:
+    desc: Package binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+      BINARY_NAME: nats-server
+    cmds:
+      - tar -czvf {{.DIST}}/{{.BINARY_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.NATS_BIN}} {{.BINARY_NAME}}
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.NATS_BIN}}
+    status:
+      - '! test -d {{.NATS_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.NATS_SRC}} {{.NATS_BIN}} {{.NATS_DATA}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.NATS_DATA}}
+    status:
+      - '! test -d {{.NATS_DATA}}'
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.NATS_SRC}}
+    status:
+      - '! test -d {{.NATS_SRC}}'

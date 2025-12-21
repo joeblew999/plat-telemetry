@@ -13,6 +13,7 @@ env:
   GOWORK: off
 
 tasks:
+  # src: tasks
   src:clone:
     desc: Clone the upstream repository at pinned version
     cmds:
@@ -28,7 +29,8 @@ tasks:
       - git fetch --tags
       - git checkout {{.PC_VERSION}}
 
-  build:
+  # bin: tasks
+  bin:build:
     desc: Build process-compose binary
     deps: [src:clone]
     dir: '{{.PC_SRC}}'
@@ -37,6 +39,69 @@ tasks:
     cmds:
       - mkdir -p {{.PC_BIN}}
       - go build -o {{.PC_BIN}}/process-compose .
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.PC_BIN}}
+      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download/process-compose-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.PC_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.PC_BIN}}/.version
+    status:
+      - test -f {{.PC_BIN}}/process-compose
+
+  # dev: tasks
+  dev:run:
+    desc: Run process-compose from source (development mode)
+    deps: [src:clone]
+    dir: '{{.PC_SRC}}'
+    cmds:
+      - mkdir -p {{.PC_DATA}}
+      - go run . up -U -u {{.PC_SOCKET}} -f {{.PC_CONFIG}} -t=false
+
+  # Service tasks
+  attach:
+    desc: Attach to running Process Compose instance (requires real TTY)
+    dir: '{{.ROOT_DIR}}'
+    deps: [ensure]
+    cmds:
+      - '{{.PC_BIN}}/process-compose attach -U -u {{.PC_SOCKET}}'
+
+  deps:
+    desc: Download dependencies
+    deps: [src:clone]
+    dir: '{{.PC_SRC}}'
+    cmds:
+      - go mod download
+    status:
+      - test -d {{.PC_SRC}}/vendor || go list -m all >/dev/null 2>&1
+
+  ensure:
+    desc: Ensure binary exists (build or download)
+    status:
+      - test -f {{.PC_BIN}}/process-compose
+    cmds:
+      - task: bin:download
+
+  install:
+    desc: Install process-compose binary
+    deps: [src:clone]
+    dir: '{{.PC_SRC}}'
+    cmds:
+      - go install .
+
+  "logs":
+    desc: "Tail logs for a process (usage: task pc:logs PROC=nats)"
+    dir: '{{.ROOT_DIR}}'
+    deps: [ensure]
+    vars:
+      PROC: '{{.PROC | default "nats"}}'
+    cmds:
+      - '{{.PC_BIN}}/process-compose process logs {{.PROC}} -f -U -u {{.PC_SOCKET}}'
 
   run:
     desc: Run all services with Process Compose (TUI mode)
@@ -54,22 +119,6 @@ tasks:
       - mkdir -p {{.PC_DATA}}
       - '{{.PC_BIN}}/process-compose up -U -u {{.PC_SOCKET}} -f {{.PC_CONFIG}} -t=false'
 
-  attach:
-    desc: Attach to running Process Compose instance (requires real TTY)
-    dir: '{{.ROOT_DIR}}'
-    deps: [ensure]
-    cmds:
-      - '{{.PC_BIN}}/process-compose attach -U -u {{.PC_SOCKET}}'
-
-  "logs":
-    desc: "Tail logs for a process (usage: task pc:logs PROC=nats)"
-    dir: '{{.ROOT_DIR}}'
-    deps: [ensure]
-    vars:
-      PROC: '{{.PROC | default "nats"}}'
-    cmds:
-      - '{{.PC_BIN}}/process-compose process logs {{.PROC}} -f -U -u {{.PC_SOCKET}}'
-
   "status":
     desc: Show status of all processes
     dir: '{{.ROOT_DIR}}'
@@ -84,13 +133,6 @@ tasks:
     cmds:
       - '{{.PC_BIN}}/process-compose down -U -u {{.PC_SOCKET}}'
 
-  ensure:
-    desc: Ensure binary exists (build or download)
-    status:
-      - test -f {{.PC_BIN}}/process-compose
-    cmds:
-      - task: bin:download
-
   test:
     desc: Run tests
     deps: [src:clone]
@@ -98,22 +140,17 @@ tasks:
     cmds:
       - go test -v ./...
 
-  install:
-    desc: Install process-compose binary
-    deps: [src:clone]
-    dir: '{{.PC_SRC}}'
+  package:
+    desc: Package binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+      BINARY_NAME: process-compose
     cmds:
-      - go install .
+      - tar -czvf {{.DIST}}/{{.BINARY_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.PC_BIN}} {{.BINARY_NAME}}
 
-  deps:
-    desc: Download dependencies
-    deps: [src:clone]
-    dir: '{{.PC_SRC}}'
-    cmds:
-      - go mod download
-    status:
-      - test -d {{.PC_SRC}}/vendor || go list -m all >/dev/null 2>&1
-
+  # clean: tasks
   clean:
     desc: Clean build artifacts
     cmds:
@@ -121,6 +158,11 @@ tasks:
       - rm -f {{.PC_SOCKET}}
     status:
       - '! test -d {{.PC_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data, socket)
+    cmds:
+      - rm -rf {{.PC_SRC}} {{.PC_BIN}} {{.PC_DATA}} {{.PC_SOCKET}}
 
   clean:data:
     desc: Clean data directory
@@ -135,23 +177,3 @@ tasks:
       - rm -rf {{.PC_SRC}}
     status:
       - '! test -d {{.PC_SRC}}'
-
-  clean:all:
-    desc: Clean everything (.src, .bin, .data, socket)
-    cmds:
-      - rm -rf {{.PC_SRC}} {{.PC_BIN}} {{.PC_DATA}} {{.PC_SOCKET}}
-
-  bin:download:
-    desc: Download pre-built binary from release
-    vars:
-      GOOS:
-        sh: go env GOOS
-      GOARCH:
-        sh: go env GOARCH
-      PC_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/{{.RELEASE_VERSION}}/download
-    cmds:
-      - mkdir -p {{.PC_BIN}}
-      - curl -L {{.PC_RELEASE_URL}}/process-compose-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.PC_BIN}}
-      - echo "{{.RELEASE_VERSION}}" > {{.PC_BIN}}/.version
-    status:
-      - test -f {{.PC_BIN}}/process-compose

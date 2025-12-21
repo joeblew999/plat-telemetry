@@ -54,21 +54,19 @@ jobs:
       - name: Clone and build
         run: task ci:src:clone && task ci:build
 
-      - name: Package binaries
+      - name: Build and package binaries
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          mkdir -p dist
-          tar -czvf dist/nats-server-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C nats/.bin nats-server
-          tar -czvf dist/liftbridge-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C liftbridge/.bin liftbridge
-          tar -czvf dist/arc-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C arc/.bin arc
-          tar -czvf dist/telegraf-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C telegraf/.bin telegraf
+          task ci:bin:build
+          task ci:package GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
+          echo "DIST_DIR=$(task ci:dist)" >> $GITHUB_ENV
 
       - name: Upload artifacts
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/
+          path: ${{ env.DIST_DIR }}/
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
@@ -78,16 +76,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Get DIST_DIR from Taskfile
+        run: echo "DIST_DIR=$(task ci:dist)" >> $GITHUB_ENV
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: dist
+          path: ${{ env.DIST_DIR }}
           merge-multiple: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: ${{ env.DIST_DIR }}/*
           generate_release_notes: true
 
   pages:

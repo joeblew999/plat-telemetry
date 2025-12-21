@@ -3,15 +3,17 @@ version: '3'
 vars:
   RELEASE_REPO: joeblew999/plat-telemetry
   RELEASE_VERSION: latest
+  DIST_DIR: '{{.ROOT_DIR}}/.dist'
 
 includes:
-  nats: ./nats
-  liftbridge: ./liftbridge
   arc: ./arc
-  telegraf: ./telegraf
-  grafana: ./grafana
   docs: ./docs
+  gh: ./gh
+  grafana: ./grafana
+  liftbridge: ./liftbridge
+  nats: ./nats
   pc: ./pc
+  telegraf: ./telegraf
 
 tasks:
   default:
@@ -22,42 +24,45 @@ tasks:
   src:clone:
     desc: Clone all subsystem repositories (parallel)
     deps:
-      - nats:src:clone
-      - liftbridge:src:clone
       - arc:src:clone
-      - telegraf:src:clone
-      - grafana:src:clone
       - docs:src:clone
+      - gh:src:clone
+      - grafana:src:clone
+      - liftbridge:src:clone
+      - nats:src:clone
       - pc:src:clone
+      - telegraf:src:clone
 
   src:update:
     desc: Update all subsystem repositories
     cmds:
-      - task nats:src:update
-      - task liftbridge:src:update
       - task arc:src:update
-      - task telegraf:src:update
-      - task grafana:src:update
       - task docs:src:update
+      - task gh:src:update
+      - task grafana:src:update
+      - task liftbridge:src:update
+      - task nats:src:update
       - task pc:src:update
+      - task telegraf:src:update
 
   bin:build:
     desc: Build all subsystems from source (parallel)
     deps:
-      - nats:build
-      - liftbridge:build
-      - arc:build
-      - telegraf:build
-      - grafana:build
-      - docs:build
-      - pc:build
+      - arc:bin:build
+      - docs:bin:build
+      - gh:bin:build
+      - grafana:bin:build
+      - liftbridge:bin:build
+      - nats:bin:build
+      - pc:bin:build
+      - telegraf:bin:build
 
   "bin:build:one":
     desc: "Build a single subsystem (usage: task bin:build:one SUBSYSTEM=nats)"
     vars:
       SUBSYSTEM: '{{.SUBSYSTEM | default "nats"}}'
     cmds:
-      - task {{.SUBSYSTEM}}:build
+      - task {{.SUBSYSTEM}}:bin:build
 
   "bin:download:one":
     desc: "Download a single subsystem binary (usage: task bin:download:one SUBSYSTEM=nats)"
@@ -76,35 +81,36 @@ tasks:
   bin:download:
     desc: Download pre-built binaries from release (parallel, for users)
     deps:
-      - nats:bin:download
-      - liftbridge:bin:download
       - arc:bin:download
-      - telegraf:bin:download
-      - grafana:bin:download
       - docs:bin:download
+      - gh:bin:download
+      - grafana:bin:download
+      - liftbridge:bin:download
+      - nats:bin:download
       - pc:bin:download
+      - telegraf:bin:download
 
-  run:
-    desc: Run all services with Process Compose
+  logs:
+    desc: "Tail logs for a process (usage: task logs PROC=nats)"
+    cmds:
+      - task pc:logs PROC={{.PROC}}
+
+  start:
+    desc: Start all services with Process Compose
     cmds:
       - task pc:run
 
-  run:fg:
-    desc: Run all services in foreground (no TUI)
-    cmds:
-      - task pc:run:fg
-
-  run:attach:
+  start:attach:
     desc: Attach to running Process Compose instance (requires real TTY)
     cmds:
       - task pc:attach
 
-  "run:logs":
-    desc: "Tail logs for a process (usage: task run:logs PROC=nats)"
+  start:fg:
+    desc: Start all services in foreground (no TUI)
     cmds:
-      - task pc:logs PROC={{.PROC}}
+      - task pc:run:fg
 
-  "run:status":
+  status:
     desc: Show status of all processes
     cmds:
       - task pc:status
@@ -117,104 +123,145 @@ tasks:
   test:
     desc: Run tests for all subsystems
     cmds:
-      - task nats:test
-      - task liftbridge:test
       - task arc:test
-      - task telegraf:test
       - task docs:test
+      - task gh:test
+      - task liftbridge:test
+      - task nats:test
       - task pc:test
+      - task telegraf:test
 
   deps:
     desc: Download dependencies for all subsystems
     cmds:
-      - task nats:deps
-      - task liftbridge:deps
       - task arc:deps
-      - task telegraf:deps
       - task docs:deps
+      - task gh:deps
+      - task liftbridge:deps
+      - task nats:deps
       - task pc:deps
+      - task telegraf:deps
 
   clean:
     desc: Clean all build artifacts
     cmds:
-      - task nats:clean
-      - task liftbridge:clean
       - task arc:clean
-      - task telegraf:clean
+      - task gh:clean
       - task grafana:clean
+      - task liftbridge:clean
+      - task nats:clean
       - task pc:clean
+      - task telegraf:clean
 
   clean:data:
     desc: Clean all data directories
     cmds:
-      - task nats:clean:data
-      - task liftbridge:clean:data
       - task arc:clean:data
-      - task telegraf:clean:data
+      - task gh:clean:data
       - task grafana:clean:data
+      - task liftbridge:clean:data
+      - task nats:clean:data
       - task pc:clean:data
+      - task telegraf:clean:data
 
   clean:src:
     desc: Clean all source directories
     cmds:
-      - task nats:clean:src
-      - task liftbridge:clean:src
       - task arc:clean:src
-      - task telegraf:clean:src
+      - task gh:clean:src
       - task grafana:clean:src
+      - task liftbridge:clean:src
+      - task nats:clean:src
       - task pc:clean:src
+      - task telegraf:clean:src
 
   clean:all:
     desc: Clean everything (.src, .bin, .data)
     cmds:
-      - task nats:clean:all
-      - task liftbridge:clean:all
       - task arc:clean:all
-      - task telegraf:clean:all
+      - task gh:clean:all
       - task grafana:clean:all
+      - task liftbridge:clean:all
+      - task nats:clean:all
       - task pc:clean:all
+      - task telegraf:clean:all
 
   # CI-specific tasks (Go binaries only, no Hugo/Grafana)
   # These skip if binaries already exist (cache hit)
   ci:src:clone:
     desc: Clone sources for CI (skips if binaries cached)
     status:
-      - test -f nats/.bin/nats-server
-      - test -f liftbridge/.bin/liftbridge
       - test -f arc/.bin/arc
+      - test -f liftbridge/.bin/liftbridge
+      - test -f nats/.bin/nats-server
       - test -f telegraf/.bin/telegraf
     deps:
-      - nats:src:clone
-      - liftbridge:src:clone
       - arc:src:clone
+      - liftbridge:src:clone
+      - nats:src:clone
       - telegraf:src:clone
 
   ci:build:
     desc: Build binaries for CI (skips if binaries cached)
     status:
-      - test -f nats/.bin/nats-server
-      - test -f liftbridge/.bin/liftbridge
       - test -f arc/.bin/arc
+      - test -f liftbridge/.bin/liftbridge
+      - test -f nats/.bin/nats-server
       - test -f telegraf/.bin/telegraf
     deps:
-      - nats:build
-      - liftbridge:build
-      - arc:build
-      - telegraf:build
+      - arc:bin:build
+      - liftbridge:bin:build
+      - nats:bin:build
+      - telegraf:bin:build
+
+  ci:bin:build:
+    desc: Build all binaries for CI (project code + external tools)
+    cmds:
+      - task: ci:src:clone
+      - task: ci:build
+      - task: pc:bin:build
+      - task: gh:bin:build
+      - task: grafana:src:clone
+
+  ci:package:
+    desc: Package all binaries for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+    cmds:
+      - mkdir -p {{.DIST}}
+      - task: arc:package
+        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
+      - task: grafana:package
+        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
+      - task: gh:package
+        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
+      - task: liftbridge:package
+        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
+      - task: nats:package
+        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
+      - task: pc:package
+        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
+      - task: telegraf:package
+        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
+
+  ci:dist:
+    desc: Output the DIST_DIR for CI to use
+    cmds:
+      - echo "{{.DIST_DIR}}"
+    silent: true
+
 
   install:deps:
     desc: Install required tools (hugo, gh, process-compose)
     cmds:
       - task docs:ensure
+      - task gh:ensure
       - task pc:ensure
-      - |
-        if ! command -v gh &> /dev/null; then
-          echo "Installing gh..."
-          {{if eq OS "darwin"}}brew install gh{{else}}go install github.com/cli/cli/v2/cmd/gh@latest{{end}}
-        fi
     status:
       - command -v hugo
-      - command -v gh
+      - test -f gh/.bin/gh
       - command -v process-compose
 
 
@@ -234,14 +281,15 @@ tasks:
 
   github:pages:
     desc: Enable GitHub Pages (idempotent)
+    deps: [gh:ensure]
     cmds:
       - |
-        if gh api repos/{{.RELEASE_REPO}}/pages 2>/dev/null | grep -q '"build_type":"workflow"'; then
+        if gh/.bin/gh api repos/{{.RELEASE_REPO}}/pages 2>/dev/null | grep -q '"build_type":"workflow"'; then
           echo "GitHub Pages already enabled with Actions"
         else
           echo "Enabling GitHub Pages..."
-          gh api repos/{{.RELEASE_REPO}}/pages -X POST -f build_type=workflow 2>/dev/null || \
-          gh api repos/{{.RELEASE_REPO}}/pages -X PUT -f build_type=workflow
+          gh/.bin/gh api repos/{{.RELEASE_REPO}}/pages -X POST -f build_type=workflow 2>/dev/null || \
+          gh/.bin/gh api repos/{{.RELEASE_REPO}}/pages -X PUT -f build_type=workflow
         fi
     status:
-      - gh api repos/{{.RELEASE_REPO}}/pages 2>/dev/null | grep -q '"build_type":"workflow"'
+      - gh/.bin/gh api repos/{{.RELEASE_REPO}}/pages 2>/dev/null | grep -q '"build_type":"workflow"'

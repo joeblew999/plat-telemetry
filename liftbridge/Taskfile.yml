@@ -12,6 +12,7 @@ env:
   GOWORK: off
 
 tasks:
+  # src: tasks
   src:clone:
     desc: Clone the upstream repository at pinned version
     cmds:
@@ -27,7 +28,8 @@ tasks:
       - git fetch --tags
       - git checkout {{.LB_VERSION}}
 
-  build:
+  # bin: tasks
+  bin:build:
     desc: Build liftbridge server
     deps: [src:clone]
     dir: '{{.LB_SRC}}'
@@ -36,69 +38,6 @@ tasks:
     cmds:
       - mkdir -p {{.LB_BIN}}
       - go build -o {{.LB_BIN}}/liftbridge .
-
-  run:
-    desc: Run liftbridge server
-    deps: [ensure]
-    cmds:
-      - mkdir -p {{.LB_DATA}}
-      - '{{.LB_BIN}}/liftbridge --data-dir={{.LB_DATA}}'
-
-  ensure:
-    desc: Ensure binary exists (build or download)
-    status:
-      - test -f {{.LB_BIN}}/liftbridge
-    cmds:
-      - task: bin:download
-
-  test:
-    desc: Run tests
-    deps: [src:clone]
-    dir: '{{.LB_SRC}}'
-    cmds:
-      - go test -v ./...
-
-  install:
-    desc: Install liftbridge binary
-    deps: [src:clone]
-    dir: '{{.LB_SRC}}'
-    cmds:
-      - go install .
-
-  deps:
-    desc: Download dependencies
-    deps: [src:clone]
-    dir: '{{.LB_SRC}}'
-    cmds:
-      - go mod download
-    status:
-      - test -d {{.LB_SRC}}/vendor || go list -m all >/dev/null 2>&1
-
-  clean:
-    desc: Clean build artifacts
-    cmds:
-      - rm -rf {{.LB_BIN}}
-    status:
-      - '! test -d {{.LB_BIN}}'
-
-  clean:data:
-    desc: Clean data directory
-    cmds:
-      - rm -rf {{.LB_DATA}}
-    status:
-      - '! test -d {{.LB_DATA}}'
-
-  clean:src:
-    desc: Clean source directory
-    cmds:
-      - rm -rf {{.LB_SRC}}
-    status:
-      - '! test -d {{.LB_SRC}}'
-
-  clean:all:
-    desc: Clean everything (.src, .bin, .data)
-    cmds:
-      - rm -rf {{.LB_SRC}} {{.LB_BIN}} {{.LB_DATA}}
 
   bin:download:
     desc: Download pre-built binary from release
@@ -113,3 +52,92 @@ tasks:
       - echo "{{.RELEASE_VERSION}}" > {{.LB_BIN}}/.version
     status:
       - test -f {{.LB_BIN}}/liftbridge
+
+  # dev: tasks
+  dev:run:
+    desc: Run liftbridge from source (development mode)
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    cmds:
+      - mkdir -p {{.LB_DATA}}
+      - go run . --data-dir={{.LB_DATA}}
+
+  # Service tasks
+  deps:
+    desc: Download dependencies
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    cmds:
+      - go mod download
+    status:
+      - test -d {{.LB_SRC}}/vendor || go list -m all >/dev/null 2>&1
+
+  ensure:
+    desc: Ensure binary exists (build or download)
+    status:
+      - test -f {{.LB_BIN}}/liftbridge
+    cmds:
+      - task: bin:download
+
+  health:
+    desc: Check if Liftbridge is healthy
+    cmds:
+      - nc -z localhost 9292
+
+  install:
+    desc: Install liftbridge binary
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    cmds:
+      - go install .
+
+  run:
+    desc: Run liftbridge binary
+    deps: [ensure]
+    cmds:
+      - mkdir -p {{.LB_DATA}}
+      - '{{.LB_BIN}}/liftbridge --data-dir={{.LB_DATA}}'
+
+  test:
+    desc: Run tests
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    cmds:
+      - go test -v ./...
+
+  package:
+    desc: Package binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+      BINARY_NAME: liftbridge
+    cmds:
+      - tar -czvf {{.DIST}}/{{.BINARY_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.LB_BIN}} {{.BINARY_NAME}}
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.LB_BIN}}
+    status:
+      - '! test -d {{.LB_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.LB_SRC}} {{.LB_BIN}} {{.LB_DATA}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.LB_DATA}}
+    status:
+      - '! test -d {{.LB_DATA}}'
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.LB_SRC}}
+    status:
+      - '! test -d {{.LB_SRC}}'

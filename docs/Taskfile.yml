@@ -8,6 +8,7 @@ vars:
   DOCS_PORT: '1313'
 
 tasks:
+  # src: tasks
   src:clone:
     desc: Docs source is in git (no-op)
     status:
@@ -20,7 +21,8 @@ tasks:
     cmds:
       - echo "Use git pull to update docs source"
 
-  build:
+  # bin: tasks
+  bin:build:
     desc: Build Hugo site
     dir: '{{.DOCS_SRC}}'
     deps: [ensure]
@@ -34,12 +36,18 @@ tasks:
     cmds:
       - hugo --minify -d {{.DOCS_BIN}}
 
-  run:
-    desc: Run Hugo dev server with hot reload
-    dir: '{{.DOCS_SRC}}'
-    deps: [ensure]
+  bin:download:
+    desc: Hugo is a system tool (no-op)
+    status:
+      - command -v hugo
     cmds:
-      - hugo server -D --bind 0.0.0.0 --port {{.DOCS_PORT}}
+      - echo "Hugo is installed via system package manager"
+
+  # Service tasks
+  deps:
+    desc: No dependencies for Hugo docs
+    cmds:
+      - echo "Hugo docs have no dependencies"
 
   ensure:
     desc: Ensure Hugo is installed (installs via go if missing)
@@ -48,12 +56,25 @@ tasks:
     cmds:
       - go install github.com/gohugoio/hugo@latest
 
-  bin:download:
-    desc: Hugo is a system tool (no-op)
-    status:
-      - command -v hugo
+  health:
+    desc: Check if Hugo server is healthy
     cmds:
-      - echo "Hugo is installed via system package manager"
+      - curl -sf http://localhost:1313/plat-telemetry/ > /dev/null
+
+  "new":
+    desc: "Create new content (usage: task docs:new PAGE=architecture/new-page)"
+    vars:
+      PAGE: '{{.PAGE | default "posts/new-post"}}'
+    dir: '{{.DOCS_SRC}}'
+    cmds:
+      - hugo new content/{{.PAGE}}.md
+
+  run:
+    desc: Run Hugo dev server (long-running service with hot reload)
+    dir: '{{.DOCS_SRC}}'
+    deps: [ensure]
+    cmds:
+      - hugo server -D --bind 0.0.0.0 --port {{.DOCS_PORT}}
 
   test:
     desc: Check Hugo build works
@@ -61,17 +82,18 @@ tasks:
     cmds:
       - hugo --minify -d {{.DOCS_BIN}}
 
-  deps:
-    desc: No dependencies for Hugo docs
-    cmds:
-      - echo "Hugo docs have no dependencies"
-
+  # clean: tasks
   clean:
     desc: Clean build artifacts
     cmds:
       - rm -rf {{.DOCS_BIN}}
     status:
       - '! test -d {{.DOCS_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.bin, .data)
+    cmds:
+      - rm -rf {{.DOCS_BIN}} {{.DOCS_DATA}} {{.DOCS_SRC}}/.hugo_build.lock
 
   clean:data:
     desc: Clean data directory
@@ -84,16 +106,3 @@ tasks:
     desc: Clean source directory (no-op, source is in git)
     cmds:
       - echo "Docs source is in git, not .src/"
-
-  clean:all:
-    desc: Clean everything (.bin, .data)
-    cmds:
-      - rm -rf {{.DOCS_BIN}} {{.DOCS_DATA}} {{.DOCS_SRC}}/.hugo_build.lock
-
-  "new":
-    desc: "Create new content (usage: task docs:new PAGE=architecture/new-page)"
-    vars:
-      PAGE: '{{.PAGE | default "posts/new-post"}}'
-    dir: '{{.DOCS_SRC}}'
-    cmds:
-      - hugo new content/{{.PAGE}}.md
