@@ -36,8 +36,7 @@ tasks:
       - test -f {{.GH_BIN}}/gh
     cmds:
       - mkdir -p {{.GH_BIN}}
-      - make build
-      - cp bin/gh {{.GH_BIN}}/
+      - go build -o {{.GH_BIN}}/gh ./cmd/gh
 
   bin:download:
     desc: Download pre-built binary from release
