@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -18,15 +19,46 @@ type TaskfilePoller struct {
 // NewTaskfilePoller creates a new Taskfile poller
 func NewTaskfilePoller() *TaskfilePoller {
 	return &TaskfilePoller{
-		interval:   30 * time.Second, // Check every 30 seconds
-		subsystems: []string{"nats", "liftbridge", "telegraf"},
-		versions:   make(map[string]string),
+		interval: 30 * time.Second, // Check every 30 seconds
+		versions: make(map[string]string),
 	}
+}
+
+// discoverSubsystems finds all subsystems that have config:version task
+func (p *TaskfilePoller) discoverSubsystems() ([]string, error) {
+	cmd := exec.Command("task", "--list-all")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	// Match patterns like "* nats:config:version:" or "nats:config:version"
+	re := regexp.MustCompile(`\* (\w+):config:version:`)
+	matches := re.FindAllStringSubmatch(string(output), -1)
+
+	var subsystems []string
+	seen := make(map[string]bool)
+	for _, match := range matches {
+		if len(match) > 1 && !seen[match[1]] {
+			subsystems = append(subsystems, match[1])
+			seen[match[1]] = true
+		}
+	}
+
+	return subsystems, nil
 }
 
 // Start begins the polling loop
 func (p *TaskfilePoller) Start() error {
 	log.Printf("🔄 Starting Taskfile poller (interval: %v)", p.interval)
+
+	// Discover subsystems dynamically
+	subsystems, err := p.discoverSubsystems()
+	if err != nil {
+		return err
+	}
+	p.subsystems = subsystems
+	log.Printf("   Discovered %d subsystems with config:version: %v", len(subsystems), subsystems)
 
 	// Initialize current versions
 	for _, subsystem := range p.subsystems {
