@@ -1,8 +1,9 @@
 version: '3'
 
 vars:
-  PC_SOCKET: '{{.TASKFILE_DIR}}/../.pc.sock'
-  PC_CONFIG: '{{.TASKFILE_DIR}}/../process-compose.yaml'
+  PC_SOCKET: '{{.TASKFILE_DIR}}/.pc.sock'
+  PC_CONFIG: '{{.TASKFILE_DIR}}/process-compose.yaml'
+  PC_DATA: '{{.TASKFILE_DIR}}/.data'
 
 tasks:
   ensure:
@@ -19,24 +20,28 @@ tasks:
 
   run:
     desc: Run all services with Process Compose (TUI mode)
+    dir: '{{.TASKFILE_DIR}}'
     deps: [ensure]
     cmds:
       - process-compose up -U -u {{.PC_SOCKET}} -f {{.PC_CONFIG}}
 
   run:fg:
     desc: Run all services in foreground (no TUI)
+    dir: '{{.TASKFILE_DIR}}'
     deps: [ensure]
     cmds:
       - process-compose up -U -u {{.PC_SOCKET}} -f {{.PC_CONFIG}} -t=false
 
   attach:
     desc: Attach to running Process Compose instance (requires real TTY)
+    dir: '{{.TASKFILE_DIR}}'
     deps: [ensure]
     cmds:
       - process-compose attach -U -u {{.PC_SOCKET}}
 
   "logs":
     desc: "Tail logs for a process (usage: task pc:logs PROC=nats)"
+    dir: '{{.TASKFILE_DIR}}'
     deps: [ensure]
     vars:
       PROC: '{{.PROC | default "nats"}}'
@@ -45,12 +50,14 @@ tasks:
 
   "status":
     desc: Show status of all processes
+    dir: '{{.TASKFILE_DIR}}'
     deps: [ensure]
     cmds:
       - process-compose process list -U -u {{.PC_SOCKET}}
 
   stop:
     desc: Stop all services
+    dir: '{{.TASKFILE_DIR}}'
     deps: [ensure]
     cmds:
       - process-compose down -U -u {{.PC_SOCKET}}
@@ -63,19 +70,22 @@ tasks:
       - '! test -f {{.PC_SOCKET}}'
 
   clean:data:
-    desc: No data directory for process-compose
+    desc: Clean data directory
     cmds:
-      - echo "Process Compose has no data directory"
+      - rm -rf {{.PC_DATA}}
+    status:
+      - '! test -d {{.PC_DATA}}'
 
   clean:src:
-    desc: No source directory for process-compose
+    desc: Process Compose has no source directory
     cmds:
       - echo "Process Compose has no source directory"
 
   clean:all:
-    desc: Clean everything (socket)
+    desc: Clean everything (socket, data)
     cmds:
       - rm -f {{.PC_SOCKET}}
+      - rm -rf {{.PC_DATA}}
 
   bin:download:
     desc: Process Compose is a system tool (no-op)
