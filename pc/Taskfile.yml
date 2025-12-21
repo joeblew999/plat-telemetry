@@ -40,7 +40,7 @@ tasks:
 
   run:
     desc: Run all services with Process Compose (TUI mode)
-    dir: '{{.TASKFILE_DIR}}'
+    dir: '{{.ROOT_DIR}}'
     deps: [ensure]
     cmds:
       - mkdir -p {{.PC_DATA}}
@@ -48,7 +48,7 @@ tasks:
 
   run:fg:
     desc: Run all services in foreground (no TUI)
-    dir: '{{.TASKFILE_DIR}}'
+    dir: '{{.ROOT_DIR}}'
     deps: [ensure]
     cmds:
       - mkdir -p {{.PC_DATA}}
@@ -56,14 +56,14 @@ tasks:
 
   attach:
     desc: Attach to running Process Compose instance (requires real TTY)
-    dir: '{{.TASKFILE_DIR}}'
+    dir: '{{.ROOT_DIR}}'
     deps: [ensure]
     cmds:
       - '{{.PC_BIN}}/process-compose attach -U -u {{.PC_SOCKET}}'
 
   "logs":
     desc: "Tail logs for a process (usage: task pc:logs PROC=nats)"
-    dir: '{{.TASKFILE_DIR}}'
+    dir: '{{.ROOT_DIR}}'
     deps: [ensure]
     vars:
       PROC: '{{.PROC | default "nats"}}'
@@ -72,14 +72,14 @@ tasks:
 
   "status":
     desc: Show status of all processes
-    dir: '{{.TASKFILE_DIR}}'
+    dir: '{{.ROOT_DIR}}'
     deps: [ensure]
     cmds:
       - '{{.PC_BIN}}/process-compose process list -U -u {{.PC_SOCKET}}'
 
   stop:
     desc: Stop all services
-    dir: '{{.TASKFILE_DIR}}'
+    dir: '{{.ROOT_DIR}}'
     deps: [ensure]
     cmds:
       - '{{.PC_BIN}}/process-compose down -U -u {{.PC_SOCKET}}'
