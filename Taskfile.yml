@@ -12,6 +12,7 @@ includes:
   liftbridge: ./liftbridge
   nats: ./nats
   pc: ./pc
+  service: ./service
   sync: ./sync
   telegraf: ./telegraf
   test-reload: ./test-reload

@@ -1,0 +1,75 @@
+version: '3'
+
+vars:
+  SVC_BIN: '{{.TASKFILE_DIR}}/.bin'
+  SVC_BIN_PATH: '{{.SVC_BIN}}/plat-telemetry-svc'
+
+env:
+  GOWORK: off
+
+tasks:
+  # bin: tasks
+  bin:build:
+    desc: Build service binary
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - mkdir -p {{.SVC_BIN}}
+      - go build -o {{.SVC_BIN_PATH}} .
+      - |
+        {
+          echo "commit: $(git rev-parse --short HEAD)"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.SVC_BIN_PATH}} | awk '{print $1}')"
+        } > {{.SVC_BIN}}/.version
+    sources:
+      - '*.go'
+      - go.mod
+      - go.sum
+    generates:
+      - '{{.SVC_BIN_PATH}}'
+
+  # Service management tasks
+  ensure:
+    desc: Ensure service binary exists
+    status:
+      - test -f {{.SVC_BIN_PATH}}
+    cmds:
+      - task: bin:build
+
+  install:
+    desc: Install as system service (launchd/systemd)
+    deps: [ensure]
+    cmds:
+      - '{{.SVC_BIN_PATH}} install'
+
+  uninstall:
+    desc: Uninstall system service
+    deps: [ensure]
+    cmds:
+      - '{{.SVC_BIN_PATH}} uninstall'
+
+  start:
+    desc: Start the system service
+    deps: [ensure]
+    cmds:
+      - '{{.SVC_BIN_PATH}} start'
+
+  stop:
+    desc: Stop the system service
+    deps: [ensure]
+    cmds:
+      - '{{.SVC_BIN_PATH}} stop'
+
+  status:
+    desc: Check service status
+    deps: [ensure]
+    cmds:
+      - '{{.SVC_BIN_PATH}} status'
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.SVC_BIN}}
+    status:
+      - '! test -d {{.SVC_BIN}}'
