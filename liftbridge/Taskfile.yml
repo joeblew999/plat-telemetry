@@ -71,6 +71,12 @@ tasks:
       - go run . --data-dir={{.LB_DATA}}
 
   # Service tasks
+  config:version:
+    desc: Output the pinned version (for sync poller)
+    cmds:
+      - echo "{{.LB_VERSION}}"
+    silent: true
+
   deps:
     desc: Download dependencies
     deps: [src:clone]

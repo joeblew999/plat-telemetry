@@ -70,6 +70,12 @@ tasks:
       - go run ./cmd/telegraf --config {{.TASKFILE_DIR}}/telegraf.conf
 
   # Service tasks
+  config:version:
+    desc: Output the pinned version (for sync poller)
+    cmds:
+      - echo "{{.TG_VERSION}}"
+    silent: true
+
   config:
     desc: Generate sample config
     preconditions:
