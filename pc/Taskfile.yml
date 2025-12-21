@@ -7,7 +7,7 @@ vars:
   PC_BIN: '{{.TASKFILE_DIR}}/.bin'
   PC_DATA: '{{.TASKFILE_DIR}}/.data'
   PC_SOCKET: '{{.TASKFILE_DIR}}/.pc.sock'
-  PC_CONFIG: '{{.TASKFILE_DIR}}/process-compose.yaml'
+  PC_CONFIG: '{{.ROOT_DIR}}/process-compose.yaml'
 
 env:
   GOWORK: off
