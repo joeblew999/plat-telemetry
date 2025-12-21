@@ -1,0 +1,50 @@
+version: '3'
+
+vars:
+  PC_SOCKET: '{{.TASKFILE_DIR}}/../.pc.sock'
+  PC_CONFIG: '{{.TASKFILE_DIR}}/../process-compose.yaml'
+
+tasks:
+  run:
+    desc: Run all services with Process Compose (TUI mode)
+    cmds:
+      - process-compose up -U -u {{.PC_SOCKET}} -f {{.PC_CONFIG}}
+
+  run:fg:
+    desc: Run all services in foreground (no TUI)
+    cmds:
+      - process-compose up -U -u {{.PC_SOCKET}} -f {{.PC_CONFIG}} -t=false
+
+  attach:
+    desc: Attach to running Process Compose instance (requires real TTY)
+    cmds:
+      - process-compose attach -U -u {{.PC_SOCKET}}
+
+  "logs":
+    desc: "Tail logs for a process (usage: task pc:logs PROC=nats)"
+    vars:
+      PROC: '{{.PROC | default "nats"}}'
+    cmds:
+      - process-compose process logs {{.PROC}} -f -U -u {{.PC_SOCKET}}
+
+  "status":
+    desc: Show status of all processes
+    cmds:
+      - process-compose process list -U -u {{.PC_SOCKET}}
+
+  stop:
+    desc: Stop all services
+    cmds:
+      - process-compose down -U -u {{.PC_SOCKET}}
+
+  clean:
+    desc: Clean socket file
+    cmds:
+      - rm -f {{.PC_SOCKET}}
+    status:
+      - '! test -f {{.PC_SOCKET}}'
+
+  clean:all:
+    desc: Clean everything (socket)
+    cmds:
+      - rm -f {{.PC_SOCKET}}

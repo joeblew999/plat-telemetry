@@ -11,6 +11,7 @@ includes:
   telegraf: ./telegraf
   grafana: ./grafana
   docs: ./docs
+  pc: ./pc
 
 tasks:
   default:
@@ -82,34 +83,32 @@ tasks:
   run:
     desc: Run all services with Process Compose
     cmds:
-      - process-compose up -U -u ./.pc.sock
+      - task pc:run
 
   run:fg:
     desc: Run all services in foreground (no TUI)
     cmds:
-      - process-compose up -U -u ./.pc.sock -t=false
+      - task pc:run:fg
 
   run:attach:
     desc: Attach to running Process Compose instance (requires real TTY)
     cmds:
-      - process-compose attach -U -u ./.pc.sock
+      - task pc:attach
 
   "run:logs":
     desc: "Tail logs for a process (usage: task run:logs PROC=nats)"
-    vars:
-      PROC: '{{.PROC | default "nats"}}'
     cmds:
-      - process-compose process logs {{.PROC}} -f -U -u ./.pc.sock
+      - task pc:logs PROC={{.PROC}}
 
   "run:status":
     desc: Show status of all processes
     cmds:
-      - process-compose process list -U -u ./.pc.sock
+      - task pc:status
 
   stop:
     desc: Stop all services
     cmds:
-      - process-compose down -U -u ./.pc.sock
+      - task pc:stop
 
   test:
     desc: Run tests for all subsystems
