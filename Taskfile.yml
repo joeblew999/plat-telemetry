@@ -160,6 +160,65 @@ tasks:
           echo ""
         done
 
+  bin:verify:running:
+    desc: Verify running processes match on-disk binary versions
+    cmds:
+      - |
+        echo "=== Running Process Version Verification ==="
+
+        # Check if PC is running
+        if ! curl -s --unix-socket pc/.pc.sock http://localhost/processes >/dev/null 2>&1; then
+          echo "⚠️  Process Compose not running"
+          exit 0
+        fi
+
+        ERRORS=0
+
+        for proc in arc liftbridge nats telegraf; do
+          if [ ! -f "$proc/.bin/.version" ]; then
+            continue
+          fi
+
+          EXPECTED_CHECKSUM=$(grep "^checksum:" "$proc/.bin/.version" | awk '{print $2}')
+
+          # Get running PID
+          PID=$(curl -s --unix-socket pc/.pc.sock http://localhost/processes 2>/dev/null | \
+            python3 -c "import sys, json; procs = json.load(sys.stdin)['data']; proc = next((p for p in procs if p['name'] == '$proc'), None); print(proc['pid'] if proc and proc['status'] == 'Running' else '')" 2>/dev/null)
+
+          if [ -z "$PID" ]; then
+            echo "⚠️  $proc: Not running"
+            continue
+          fi
+
+          # Get binary path from running process
+          case "$proc" in
+            nats) BIN_NAME="nats-server" ;;
+            *) BIN_NAME="$proc" ;;
+          esac
+
+          RUNNING_BIN=$(lsof -p "$PID" 2>/dev/null | grep "/$BIN_NAME\$" | awk '{print $NF}' | head -1)
+
+          if [ -n "$RUNNING_BIN" ]; then
+            RUNNING_CHECKSUM=$(shasum -a 256 "$RUNNING_BIN" 2>/dev/null | awk '{print $1}')
+
+            if [ "$RUNNING_CHECKSUM" != "$EXPECTED_CHECKSUM" ]; then
+              echo "❌ $proc: Running WRONG version (PID $PID)"
+              echo "  → Run 'task reload PROC=$proc' to update"
+              ERRORS=$((ERRORS + 1))
+            else
+              echo "✓ $proc: Running correct version (PID $PID)"
+            fi
+          fi
+        done
+
+        echo ""
+        if [ $ERRORS -gt 0 ]; then
+          echo "❌ $ERRORS processes need reload"
+          exit 1
+        else
+          echo "✅ All running processes match disk versions"
+        fi
+
   logs:
     desc: "Tail logs for a process (usage: task logs PROC=nats)"
     cmds:
