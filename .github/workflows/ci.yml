@@ -52,13 +52,12 @@ jobs:
           key: bins-${{ matrix.goos }}-${{ matrix.goarch }}-${{ hashFiles('*/Taskfile.yml') }}
 
       - name: Clone and build
-        run: task ci:src:clone && task ci:build
+        run: task bin:build
 
       - name: Build and package binaries
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          task ci:bin:build
-          task ci:package GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
+          task package GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }}
           echo "DIST_DIR=$(task ci:dist)" >> $GITHUB_ENV
 
       - name: Upload artifacts

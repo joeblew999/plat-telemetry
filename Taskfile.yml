@@ -186,71 +186,28 @@ tasks:
       - task pc:clean:all
       - task telegraf:clean:all
 
-  # CI-specific tasks (Go binaries only, no Hugo/Grafana)
-  # These skip if binaries already exist (cache hit)
-  ci:src:clone:
-    desc: Clone sources for CI (skips if binaries cached)
-    status:
-      - test -f arc/.bin/arc
-      - test -f liftbridge/.bin/liftbridge
-      - test -f nats/.bin/nats-server
-      - test -f telegraf/.bin/telegraf
-    deps:
-      - arc:src:clone
-      - liftbridge:src:clone
-      - nats:src:clone
-      - telegraf:src:clone
-
-  ci:build:
-    desc: Build binaries for CI (skips if binaries cached)
-    status:
-      - test -f arc/.bin/arc
-      - test -f liftbridge/.bin/liftbridge
-      - test -f nats/.bin/nats-server
-      - test -f telegraf/.bin/telegraf
-    deps:
-      - arc:bin:build
-      - liftbridge:bin:build
-      - nats:bin:build
-      - telegraf:bin:build
-
-  ci:bin:build:
-    desc: Build all binaries for CI (project code + external tools)
-    cmds:
-      - task: ci:src:clone
-      - task: ci:build
-      - task: pc:bin:build
-      - task: gh:bin:build
-      - task: grafana:src:clone
-
-  ci:package:
-    desc: Package all binaries for release
+  package:
+    desc: Package all binaries for release (parallel)
     vars:
       GOOS: '{{.GOOS | default OS}}'
       GOARCH: '{{.GOARCH | default ARCH}}'
       DIST: '{{.DIST | default .DIST_DIR}}'
     cmds:
       - mkdir -p {{.DIST}}
-      - task: arc:package
-        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
-      - task: grafana:package
-        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
-      - task: gh:package
-        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
-      - task: liftbridge:package
-        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
-      - task: nats:package
-        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
-      - task: pc:package
-        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
-      - task: telegraf:package
-        vars: {GOOS: '{{.GOOS}}', GOARCH: '{{.GOARCH}}', DIST: '{{.DIST}}'}
+      - for: [arc, gh, grafana, liftbridge, nats, pc, telegraf]
+        task: '{{.ITEM}}:package'
+        vars:
+          GOOS: '{{.GOOS}}'
+          GOARCH: '{{.GOARCH}}'
+          DIST: '{{.DIST}}'
 
+  # CI-specific tasks
   ci:dist:
     desc: Output the DIST_DIR for CI to use
     cmds:
       - echo "{{.DIST_DIR}}"
     silent: true
+
 
 
   install:deps:

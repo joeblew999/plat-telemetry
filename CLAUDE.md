@@ -62,11 +62,18 @@ Per subsystem:
 4. Service tasks (alphabetically sorted)
 5. clean: tasks (alphabetically sorted)
 
+**Root-level aggregator tasks** (delegate to all subsystems):
+- `src:clone` - Clone all subsystem sources (parallel via `deps:`)
+- `src:update` - Update all subsystem sources (sequential via `cmds:`)
+- `bin:build` - Build all subsystems from source (parallel via `deps:`)
+- `bin:download` - Download all pre-built binaries (parallel via `deps:`)
+- `package` - Package all binaries for release (sequential via `for:` loop with vars)
+- `test` - Run tests for all subsystems (sequential)
+- `deps` - Download dependencies for all subsystems (sequential)
+- `clean`, `clean:data`, `clean:src`, `clean:all` - Clean tasks (sequential)
+
 **CI-specific tasks (root Taskfile only):**
-- `ci:src:clone` - Clone sources for CI (skips if binaries cached)
-- `ci:build` - Build project binaries for CI (skips if binaries cached)
-- `ci:bin:build` - Build all binaries (project code + external tools)
-- `ci:package` - Package all binaries for release (delegates to subsystem `package` tasks)
+- `ci:dist` - Output the DIST_DIR path for CI to query (maintains "Taskfiles are the source of truth")
 
 ## Sorting Rules
 
