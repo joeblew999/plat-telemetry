@@ -28,6 +28,7 @@ tasks:
       - telegraf:src:clone
       - grafana:src:clone
       - docs:src:clone
+      - pc:src:clone
 
   src:update:
     desc: Update all subsystem repositories
@@ -38,6 +39,7 @@ tasks:
       - task telegraf:src:update
       - task grafana:src:update
       - task docs:src:update
+      - task pc:src:update
 
   bin:build:
     desc: Build all subsystems from source (parallel)
@@ -48,6 +50,7 @@ tasks:
       - telegraf:build
       - grafana:build
       - docs:build
+      - pc:build
 
   "bin:build:one":
     desc: "Build a single subsystem (usage: task bin:build:one SUBSYSTEM=nats)"
@@ -79,6 +82,7 @@ tasks:
       - telegraf:bin:download
       - grafana:bin:download
       - docs:bin:download
+      - pc:bin:download
 
   run:
     desc: Run all services with Process Compose
@@ -118,6 +122,7 @@ tasks:
       - task arc:test
       - task telegraf:test
       - task docs:test
+      - task pc:test
 
   deps:
     desc: Download dependencies for all subsystems
@@ -127,6 +132,7 @@ tasks:
       - task arc:deps
       - task telegraf:deps
       - task docs:deps
+      - task pc:deps
 
   clean:
     desc: Clean all build artifacts
@@ -136,6 +142,7 @@ tasks:
       - task arc:clean
       - task telegraf:clean
       - task grafana:clean
+      - task pc:clean
 
   clean:data:
     desc: Clean all data directories
@@ -145,6 +152,7 @@ tasks:
       - task arc:clean:data
       - task telegraf:clean:data
       - task grafana:clean:data
+      - task pc:clean:data
 
   clean:src:
     desc: Clean all source directories
@@ -154,6 +162,7 @@ tasks:
       - task arc:clean:src
       - task telegraf:clean:src
       - task grafana:clean:src
+      - task pc:clean:src
 
   clean:all:
     desc: Clean everything (.src, .bin, .data)
@@ -163,6 +172,7 @@ tasks:
       - task arc:clean:all
       - task telegraf:clean:all
       - task grafana:clean:all
+      - task pc:clean:all
 
   # CI-specific tasks (Go binaries only, no Hugo/Grafana)
   # These skip if binaries already exist (cache hit)
