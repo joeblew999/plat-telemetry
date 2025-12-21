@@ -6,6 +6,7 @@
 
 # Data directories
 **/.data/
+/.data/
 /data/
 
 # Build artifacts
@@ -15,6 +16,9 @@ coverage.html
 .dist/
 .test-results/
 Taskfile.yml.backup
+
+# Task cache
+.task/
 
 # Config files with secrets
 *.local.toml

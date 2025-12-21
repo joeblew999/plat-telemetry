@@ -1,5 +1,13 @@
 # TODO
 
+---
+
+The binaries are unsigned. We need to solve this because our DEVS and USERS need this to compensate. 
+
+On Linxu and Darwin there are standard ways to allow unsigned binaries to run. We need to look at this !!
+
+---
+
 ## ✅ VERIFIED: USER Binary Update Workflow (PC stays running)
 
 **The correct flow - tested and working:**
