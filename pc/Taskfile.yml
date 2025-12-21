@@ -5,23 +5,39 @@ vars:
   PC_CONFIG: '{{.TASKFILE_DIR}}/../process-compose.yaml'
 
 tasks:
+  ensure:
+    desc: Ensure process-compose is installed
+    status:
+      - command -v process-compose
+    cmds:
+      - |
+        {{if eq OS "darwin"}}
+        brew install process-compose
+        {{else}}
+        go install github.com/F1bonacc1/process-compose@latest
+        {{end}}
+
   run:
     desc: Run all services with Process Compose (TUI mode)
+    deps: [ensure]
     cmds:
       - process-compose up -U -u {{.PC_SOCKET}} -f {{.PC_CONFIG}}
 
   run:fg:
     desc: Run all services in foreground (no TUI)
+    deps: [ensure]
     cmds:
       - process-compose up -U -u {{.PC_SOCKET}} -f {{.PC_CONFIG}} -t=false
 
   attach:
     desc: Attach to running Process Compose instance (requires real TTY)
+    deps: [ensure]
     cmds:
       - process-compose attach -U -u {{.PC_SOCKET}}
 
   "logs":
     desc: "Tail logs for a process (usage: task pc:logs PROC=nats)"
+    deps: [ensure]
     vars:
       PROC: '{{.PROC | default "nats"}}'
     cmds:
@@ -29,11 +45,13 @@ tasks:
 
   "status":
     desc: Show status of all processes
+    deps: [ensure]
     cmds:
       - process-compose process list -U -u {{.PC_SOCKET}}
 
   stop:
     desc: Stop all services
+    deps: [ensure]
     cmds:
       - process-compose down -U -u {{.PC_SOCKET}}
 

@@ -195,20 +195,12 @@ tasks:
   install:deps:
     desc: Install required tools (hugo, gh, process-compose)
     cmds:
-      - |
-        if ! command -v hugo &> /dev/null; then
-          echo "Installing hugo..."
-          {{if eq OS "darwin"}}brew install hugo{{else}}go install github.com/gohugoio/hugo@latest{{end}}
-        fi
+      - task docs:ensure
+      - task pc:ensure
       - |
         if ! command -v gh &> /dev/null; then
           echo "Installing gh..."
           {{if eq OS "darwin"}}brew install gh{{else}}go install github.com/cli/cli/v2/cmd/gh@latest{{end}}
-        fi
-      - |
-        if ! command -v process-compose &> /dev/null; then
-          echo "Installing process-compose..."
-          {{if eq OS "darwin"}}brew install process-compose{{else}}go install github.com/F1bonacc1/process-compose@latest{{end}}
         fi
     status:
       - command -v hugo
