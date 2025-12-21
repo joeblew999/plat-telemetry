@@ -29,6 +29,7 @@ tasks:
   # bin: tasks
   bin:build:
     desc: Build sync binary from source
+    dir: '{{.TASKFILE_DIR}}'
     sources:
       - "**/*.go"
       - go.mod
@@ -93,6 +94,12 @@ tasks:
     deps: [ensure]
     cmds:
       - "{{.BIN_PATH}} poll"
+
+  poll:taskfiles:
+    desc: Run Taskfile polling service for version changes
+    deps: [ensure]
+    cmds:
+      - "{{.BIN_PATH}} poll-taskfiles"
 
   run:
     desc: Run webhook server

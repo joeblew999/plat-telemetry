@@ -10,14 +10,16 @@ import (
 // CheckVersion checks if a subsystem has updates available
 // Returns: current version, latest version, error
 func CheckVersion(subsystem string) (string, string, error) {
-	// Task always runs from root directory, so paths are relative to cwd
-	cwd, err := os.Getwd()
+	// Find project root - sync binary is in sync/.bin/, so go up 2 levels
+	// From: /path/to/project/sync/.bin/sync
+	// To:   /path/to/project
+	root, err := filepath.Abs(filepath.Join(filepath.Dir(os.Args[0]), "..", ".."))
 	if err != nil {
-		return "", "", fmt.Errorf("failed to get working directory: %w", err)
+		return "", "", fmt.Errorf("failed to get project root: %w", err)
 	}
 
 	// Read current version from <subsystem>/.bin/.version
-	versionPath := filepath.Join(cwd, subsystem, ".bin", ".version")
+	versionPath := filepath.Join(root, subsystem, ".bin", ".version")
 	current, err := readVersion(versionPath)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to read current version: %w", err)
@@ -52,13 +54,15 @@ func readVersion(path string) (string, error) {
 
 // GetCurrentVersion gets the current commit hash for a subsystem
 func GetCurrentVersion(subsystem string) (string, error) {
-	// Task always runs from root directory, so paths are relative to cwd
-	cwd, err := os.Getwd()
+	// Find project root - sync binary is in sync/.bin/, so go up 2 levels
+	// From: /path/to/project/sync/.bin/sync
+	// To:   /path/to/project
+	root, err := filepath.Abs(filepath.Join(filepath.Dir(os.Args[0]), "..", ".."))
 	if err != nil {
-		return "", fmt.Errorf("failed to get working directory: %w", err)
+		return "", fmt.Errorf("failed to get project root: %w", err)
 	}
 
 	// Read current version from <subsystem>/.bin/.version
-	versionPath := filepath.Join(cwd, subsystem, ".bin", ".version")
+	versionPath := filepath.Join(root, subsystem, ".bin", ".version")
 	return readVersion(versionPath)
 }

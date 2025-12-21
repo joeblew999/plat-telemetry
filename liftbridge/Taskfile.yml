@@ -6,6 +6,8 @@ vars:
   LB_SRC: '{{.TASKFILE_DIR}}/.src'
   LB_BIN: '{{.TASKFILE_DIR}}/.bin'
   LB_DATA: '{{.TASKFILE_DIR}}/.data'
+  LB_CONFIG: '{{.TASKFILE_DIR}}/configs'
+  LB_MODE: '{{.LB_MODE | default "standalone"}}'  # standalone or cluster
   LB_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
 env:
@@ -98,11 +100,11 @@ tasks:
       - go install .
 
   run:
-    desc: Run liftbridge binary
+    desc: Run liftbridge binary (standalone or cluster mode)
     deps: [ensure]
     cmds:
       - mkdir -p {{.LB_DATA}}
-      - '{{.LB_BIN}}/liftbridge --data-dir={{.LB_DATA}}'
+      - '{{.LB_BIN}}/liftbridge --config={{.LB_CONFIG}}/{{.LB_MODE}}.yaml --data-dir={{.LB_DATA}}'
 
   test:
     desc: Run tests

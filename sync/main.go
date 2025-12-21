@@ -13,6 +13,7 @@ func main() {
 		fmt.Println("Commands:")
 		fmt.Println("  check                          Check for upstream updates")
 		fmt.Println("  poll                           Poll upstream repos for updates")
+		fmt.Println("  poll-taskfiles                 Poll Taskfiles for version changes")
 		fmt.Println("  watch                          Start webhook server")
 		fmt.Println("  clone <url> <path> [version]   Clone git repository")
 		fmt.Println("  pull <path>                    Pull git repository updates")
@@ -26,6 +27,8 @@ func main() {
 		cmd.Check()
 	case "poll":
 		cmd.Poll()
+	case "poll-taskfiles":
+		cmd.PollTaskfiles()
 	case "watch":
 		cmd.Watch()
 	case "clone":

@@ -69,6 +69,11 @@ tasks:
       - go run . --config {{.TASKFILE_DIR}}/nats.conf
 
   # Service tasks
+  config:version:
+    desc: Output the pinned version (for sync poller)
+    cmds:
+      - echo "{{.NATS_VERSION}}"
+    silent: true
   deps:
     desc: Download dependencies
     deps: [src:clone]

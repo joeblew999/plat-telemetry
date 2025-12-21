@@ -56,6 +56,12 @@ This implements "NEVER PUSH TO CI AND PRAY" - catch ALL issues locally before Gi
 
 ## Architecture Principles
 
+**EVERYTHING runs via Task.** You, me, users, CI, services - EVERYTHING. There is NO other way to run anything. If you find yourself:
+- Running binaries directly (e.g., `sync/.bin/sync poll`) - WRONG, use `task sync:poll`
+- Changing directories with `cd` - WRONG, Task controls working directory via `dir:`
+- Using custom environment variables for paths - WRONG, Task provides `{{.ROOT_DIR}}`, `{{.TASKFILE_DIR}}`, etc.
+- Running commands from subdirectories - WRONG, always run from root via `task <subsystem>:<task>`
+
 **Taskfiles are the source of truth.** Everything runs through `task` - DEV, CI, OPS use identical commands.
 
 **Root-level configuration variables** (defined in root Taskfile.yml):
