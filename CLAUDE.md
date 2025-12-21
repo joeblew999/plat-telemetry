@@ -12,6 +12,48 @@ NEVER EVER JUST PUSH TO GITHUB CI and PRAY!
 
 ONLY ever have a single GitHub workflow for CI.
 
+## Round-Trip Testing
+
+**MUST check GitHub CI via local Taskfile before pushing.** The entire CI workflow is testable locally:
+
+```bash
+# Test the EXACT same CI workflow that runs on GitHub
+task ci
+
+# Or test individual CI phases
+task ci:build    # Build all binaries
+task ci:test     # Run regression tests
+task ci:package  # Package for release (conditional on git tags)
+task ci:pages    # Build docs (conditional on main branch)
+```
+
+**ALWAYS run Process Compose via Task.** Never call `process-compose` directly - use Task wrappers:
+
+```bash
+# Start services (foreground)
+task start:fg
+
+# Start services (background)
+task start
+
+# Check service status
+task status
+
+# Reload a specific service
+task reload PROC=nats
+
+# Stop all services
+task stop
+```
+
+**FULLY round-trip in real-time.** Before pushing ANY changes:
+1. Run `task ci` locally - validates build, tests, packaging
+2. Keep `task start:fg` running in background terminal - validates services stay healthy
+3. Run `task test:reload:all` - validates hot-reload workflows
+4. Only push after ALL local validation passes
+
+This implements "NEVER PUSH TO CI AND PRAY" - catch ALL issues locally before GitHub CI runs.
+
 ## Architecture Principles
 
 **Taskfiles are the source of truth.** Everything runs through `task` - DEV, CI, OPS use identical commands.
