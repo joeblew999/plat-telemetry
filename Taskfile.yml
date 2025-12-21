@@ -12,6 +12,7 @@ includes:
   liftbridge: ./liftbridge
   nats: ./nats
   pc: ./pc
+  sync: ./sync
   telegraf: ./telegraf
   test-reload: ./test-reload
 
@@ -315,12 +316,44 @@ tasks:
       DIST: '{{.DIST | default .DIST_DIR}}'
     cmds:
       - mkdir -p {{.DIST}}
-      - for: [arc, gh, liftbridge, nats, pc, telegraf]
+      - for: [arc, gh, liftbridge, nats, pc, sync, telegraf]
         task: '{{.ITEM}}:package'
         vars:
           GOOS: '{{.GOOS}}'
           GOARCH: '{{.GOARCH}}'
           DIST: '{{.DIST}}'
+
+  # Sync tasks (version automation)
+  sync:check:
+    desc: Check subsystems for upstream updates (manual testing)
+    cmds:
+      - sync/.bin/sync check {{.SUBSYSTEM | default "all"}}
+
+  sync:update:
+    desc: Update subsystem with available update (called by webhook)
+    vars:
+      SUBSYSTEM: '{{.SUBSYSTEM}}'
+    cmds:
+      - |
+        # Update specific subsystem (INCREMENTAL)
+        if [ -z "{{.SUBSYSTEM}}" ]; then
+          echo "❌ SUBSYSTEM not specified"
+          exit 1
+        fi
+
+        echo "▶ Updating {{.SUBSYSTEM}}..."
+
+        # DEV mode: rebuild from source
+        if [ -d "{{.SUBSYSTEM}}/.src" ]; then
+          task {{.SUBSYSTEM}}:src:update
+          task {{.SUBSYSTEM}}:bin:build
+        # USER mode: download pre-built binary
+        else
+          task {{.SUBSYSTEM}}:bin:download
+        fi
+
+        task bin:verify
+        task reload PROC={{.SUBSYSTEM}}
 
   # CI-specific tasks
   ci:dist:

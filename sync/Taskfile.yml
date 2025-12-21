@@ -1,0 +1,127 @@
+version: '3'
+
+vars:
+  BIN_NAME: sync
+  SYNC_SRC: '{{.TASKFILE_DIR}}/.src'
+  SYNC_BIN: '{{.TASKFILE_DIR}}/.bin'
+  SYNC_DATA: '{{.TASKFILE_DIR}}/.data'
+  BIN_PATH: "{{.SYNC_BIN}}/{{.BIN_NAME}}"
+  UPSTREAM_REPO: https://github.com/joeblew999/plat-telemetry
+  UPSTREAM_BRANCH: main
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks
+  src:clone:
+    desc: Clone sync source (sync is in-repo code)
+    cmds:
+      - echo "▶ sync is in-repo code, no clone needed"
+    status:
+      - test -d ../sync
+
+  src:update:
+    desc: Update sync source
+    cmds:
+      - git pull origin {{.UPSTREAM_BRANCH}}
+
+  # bin: tasks
+  bin:build:
+    desc: Build sync binary from source
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.BIN_PATH}}"
+      - "{{.SYNC_BIN}}/.version"
+    cmds:
+      - mkdir -p {{.SYNC_BIN}}
+      - go build -o {{.BIN_PATH}} .
+      - |
+        echo "commit: $(git rev-parse --short HEAD)" > {{.SYNC_BIN}}/.version
+        echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> {{.SYNC_BIN}}/.version
+        echo "checksum: $(shasum -a 256 {{.BIN_PATH}} | awk '{print $1}')" >> {{.SYNC_BIN}}/.version
+
+  bin:download:
+    desc: Download pre-built sync binary (USER)
+    vars:
+      RELEASE_REPO: '{{.RELEASE_REPO | default "joeblew999/plat-telemetry"}}'
+      RELEASE_VERSION: '{{.RELEASE_VERSION | default "latest"}}'
+    cmds:
+      - mkdir -p {{.SYNC_BIN}}
+      - |
+        gh release download {{.RELEASE_VERSION}} \
+          --repo {{.RELEASE_REPO}} \
+          --pattern "sync-{{OS}}-{{ARCH}}.tar.gz" \
+          --output - | tar xz -C {{.SYNC_BIN}}
+      - chmod +x {{.BIN_PATH}}
+
+  # Service tasks
+  deps:
+    desc: Download Go dependencies
+    cmds:
+      - go mod download
+    status:
+      - test -f go.sum
+
+  ensure:
+    desc: Ensure binary exists
+    cmds:
+      - |
+        if [ -f go.mod ]; then
+          task bin:build
+        else
+          task bin:download
+        fi
+    status:
+      - test -f {{.BIN_PATH}}
+
+  health:
+    desc: Check webhook server health
+    cmds:
+      - curl -f http://localhost:9090/health || exit 1
+
+  health:poller:
+    desc: Check poller service health (always returns success if running)
+    cmds:
+      - exit 0
+
+  poll:
+    desc: Run polling service for upstream repos
+    deps: [ensure]
+    cmds:
+      - "{{.BIN_PATH}} poll"
+
+  run:
+    desc: Run webhook server
+    deps: [ensure]
+    env:
+      PORT: "9090"
+    cmds:
+      - "{{.BIN_PATH}} watch"
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test -v ./...
+
+  package:
+    desc: Package sync binary for release
+    vars:
+      DIST_DIR: '{{.DIST_DIR | default "../.dist"}}'
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - tar czf {{.DIST_DIR}}/sync-{{OS}}-{{ARCH}}.tar.gz -C {{.SYNC_BIN}} {{.BIN_NAME}} .version
+
+  # clean: tasks
+  clean:
+    desc: Clean built binaries
+    cmds:
+      - rm -rf {{.SYNC_BIN}}
+
+  clean:data:
+    desc: Clean runtime data
+    cmds:
+      - echo "No data to clean"

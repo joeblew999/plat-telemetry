@@ -64,8 +64,10 @@ This implements "NEVER PUSH TO CI AND PRAY" - catch ALL issues locally before Gi
 - `DIST_DIR` - Directory for packaged release artifacts (defaults to `{{.ROOT_DIR}}/.dist`)
 
 **process-compose.yaml delegates to Taskfiles.** Process Compose only orchestrates (process dependencies and restart policies). All implementation details live in subsystem Taskfiles:
-- `command:` calls `task <subsystem>:run` (execute binary)
-- `readiness_probe:` calls `task <subsystem>:health` (returns immediately)
+- `command:` MUST call a task (e.g., `task <subsystem>:run`, `task <subsystem>:poll`)
+- `readiness_probe:` MUST call a task (e.g., `task <subsystem>:health`, `task <subsystem>:health:poller`)
+- **NEVER** call binaries directly (e.g., `sync/.bin/sync poll` is WRONG)
+- Task names can be anything appropriate for the operation (:run, :poll, :watch, etc.)
 
 **Idempotency everywhere.** Every task must be safe to run repeatedly:
 - Use `status:` to skip if already done
@@ -128,6 +130,81 @@ This makes scanning and finding subsystems easy and keeps everything predictable
 ## Go-Specific
 
 Use `GOWORK: off` for Go builds.
+
+Set at the top level of subsystem Taskfiles:
+```yaml
+env:
+  GOWORK: off
+```
+
+**Never shell out to git binary.** Use `sync clone` and `sync pull` commands instead:
+```yaml
+# BAD - assumes git binary exists (breaks for USERs)
+src:clone:
+  cmds:
+    - git clone --branch {{.VERSION}} {{.UPSTREAM_REPO}} {{.SRC_DIR}}
+
+# GOOD - uses sync binary with go-git (works for everyone)
+src:clone:
+  cmds:
+    - sync/.bin/sync clone {{.UPSTREAM_REPO}} {{.SRC_DIR}} {{.VERSION}}
+```
+
+The sync subsystem embeds go-git, so git operations work without requiring git binary installation.
+
+## Automated Updates (sync subsystem)
+
+**INCREMENTAL updates only.** The sync subsystem monitors UPSTREAM source repositories and triggers rebuilds ONLY for subsystems whose source changed. Never rebuild everything.
+
+**Dual monitoring approach:**
+
+1. **GitHub polling** - For upstream repos we don't control (nats-io, liftbridge-io, influxdata):
+   - GitHub API polling every 5 minutes using [github.com/google/go-github/v80](https://github.com/google/go-github)
+   - Compares latest commit hash with local `.version` file
+   - Triggers update when mismatch detected
+   - Runs as `sync-poller` service in Process Compose
+
+2. **GitHub webhooks** - For repos we control (joeblew999/plat-telemetry):
+   - Event-driven using [github.com/cbrgm/githubevents/v2](https://github.com/cbrgm/githubevents)
+   - Listens on port 9090 for webhook POST requests
+   - Runs as `sync` service in Process Compose
+
+**Update workflow** - Both polling and webhooks trigger the same flow:
+- Maps repository to subsystem (nats-io/nats-server → nats)
+- Triggers `task sync:update SUBSYSTEM=<name>`
+- Hot-reloads the updated service via Process Compose API
+
+**Two update modes:**
+
+1. **DEV mode** - Monitor upstream source repos for changes:
+   - Polling detects new commits on upstream repos
+   - Or webhook fires when we push to upstream (if configured)
+   - On change → `task <subsystem>:src:update` → `task <subsystem>:bin:build` → `task reload PROC=<subsystem>`
+
+2. **USER mode** - Monitor plat-telemetry releases for new binaries:
+   - Webhook fires when we publish releases
+   - On release published → `task <subsystem>:bin:download` → `task reload PROC=<subsystem>`
+
+**Version tracking** - Each binary has a `.version` file with:
+```
+commit: <short-sha>
+timestamp: <ISO8601>
+checksum: <SHA256>
+```
+
+**Manual check** - Test version checking without webhooks:
+```bash
+task sync:check                    # Check all subsystems
+task sync:check SUBSYSTEM=nats     # Check specific subsystem
+```
+
+**Integration:**
+- sync/Taskfile.yml - Standard subsystem tasks with GOWORK=off at top level
+- sync/pkg/poller/ - GitHub API polling using go-github/v80
+- sync/pkg/webhook/ - GitHub webhook handlers using githubevents/v2
+- sync/pkg/checker/ - Version comparison logic
+- Taskfile.yml - Root tasks: sync:check, sync:update
+- process-compose.yaml - sync service (webhooks) and sync-poller service (polling)
 
 ## Workflows
 

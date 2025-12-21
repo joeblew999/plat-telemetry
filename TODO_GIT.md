@@ -2,21 +2,39 @@
 
 ## Goal
 
-Automate upstream version detection and binary rebuilds using **git fetch** and **GitHub webhooks** - NO POLLING!
+Automate version detection and **INCREMENTAL binary updates** using **GitHub webhooks** - NO POLLING!
+
+**CRITICAL: This runs on BOTH DEV and USER machines.**
+- **DEVs**: Webhook monitors UPSTREAM source repos (nats-io, arcopen, etc.)
+  - When nats-io/nats-server releases → rebuild ONLY nats → package ONLY nats → release
+  - When arcopen/arc releases → rebuild ONLY arc → package ONLY arc → release
+  - **INCREMENTAL**: Only rebuild what actually changed upstream
+- **USERs**: Webhook monitors plat-telemetry releases
+  - Download ONLY updated binaries → hot-reload ONLY affected services
+- **1,000s of deployed machines** get real-time INCREMENTAL updates
+- **Zero manual intervention** - fully automated update pipeline
+- **CI optimization**: Only rebuild subsystems whose upstream source changed
 
 ## Problem Statement
 
-**Current approach:**
+**Current approach (BROKEN):**
+- CI rebuilds ALL binaries on EVERY commit (wasteful!)
 - Each subsystem has a manually pinned `VERSION` in its Taskfile
 - We manually check upstream repos for new releases
-- We manually update VERSION and rebuild binaries
+- We manually update VERSION and rebuild ALL binaries
 - No automation for detecting when upstream changes
+- **CI is dumb** - rebuilds nats even when only arc source changed
 
 **What we need:**
-- Use git fetch to check upstream state (on-demand, not polling)
-- GitHub webhooks to trigger checks when upstream actually changes
-- Use git metadata as the source of truth for versioning
+- **INCREMENTAL builds** - only rebuild what changed upstream
+- GitHub webhooks to monitor UPSTREAM source repos (nats-io, arcopen, etc.)
+- When nats-io releases → rebuild ONLY nats, package ONLY nats
+- When arcopen releases → rebuild ONLY arc, package ONLY arc
+- CI should do the SAME - only rebuild changed subsystems
+- USERs download ONLY updated binaries
+- Hot-reload ONLY affected services
 - Zero polling - event-driven architecture only
+- **Works for 1,000s of deployed USER machines** + DEV environments
 
 ## Tools to Use
 
@@ -60,131 +78,335 @@ handler.OnPushEvent(func(event PushEvent) error {
 
 ## Architecture
 
-### Component 1: Version Checker (Go Binary) - ON-DEMAND ONLY
+**SERVICE subsystem running on BOTH DEV and USER machines**
 
-**Name:** `version-checker`
-**Location:** `vc/` (new subsystem)
+### Subsystem: `sync/`
+
+**Purpose:** Synchronize with releases and auto-update binaries in real-time
+**Category:** SERVICE (runs in Process Compose like `nats/`, `arc/`)
+**Scope:** BOTH DEV and USER (1,000s of deployed machines)
+
+**Single binary with two modes:**
+```bash
+sync/.bin/sync watch --port 8080  # Webhook server (runs as service)
+sync/.bin/sync check              # Manual version check (testing only)
+```
+
+**Directory structure:**
+```
+sync/
+├── .bin/
+│   ├── sync         # Single binary, distributed to USERs
+│   └── .version
+├── .src/            # Source code (DEV only)
+├── main.go
+├── cmd/
+│   ├── check.go     # Version checking via GitHub API
+│   └── watch.go     # Webhook server via githubevents
+├── pkg/
+│   ├── checker/     # GitHub release detection
+│   └── webhook/     # githubevents handling
+└── Taskfile.yml     # Standard service tasks (bin:build, bin:download, run, health)
+```
+
+**Process Compose integration (DEV and USER):**
+```yaml
+sync:
+  command: task sync:run
+  readiness_probe:
+    exec:
+      command: task sync:health
+    initial_delay_seconds: 3
+    period_seconds: 10
+  # No dependencies - runs independently
+  # BOTH DEVs and USERs run this service
+```
+
+### Mode 1: Version Checker (Manual testing only)
 
 **Responsibilities:**
-1. Run `git fetch` on .src repos (on-demand, when triggered)
-2. Compare local HEAD vs origin/main
-3. Detect new tags/releases
-4. Output: JSON manifest of available updates
+1. Check GitHub releases API for new versions
+2. Compare current vs latest versions
+3. Output: JSON manifest of available updates
 
 **Key principle: NO POLLING!**
-- Only runs when explicitly called: `task version:check`
-- Only runs when webhook receives event
-- Uses `git fetch` to query remote state
-- Zero background processes, zero cron jobs
+- Only runs when explicitly called: `task sync:check`
+- Primarily for manual testing
+- Webhook is the PRIMARY mechanism
 
 **Interface:**
 ```bash
-# Manually check for updates (rare, for testing)
-task version:check
+# Manual check for updates (testing only)
+task sync:check
 
 # Output:
 # {
-#   "nats": {"current": "abc123", "latest": "def456", "update_available": true},
-#   "arc": {"current": "xyz789", "latest": "xyz789", "update_available": false}
+#   "nats": {"current": "v2.10.24", "latest": "v2.10.25", "update_available": true},
+#   "arc": {"current": "v1.0.0", "latest": "v1.0.0", "update_available": false}
 # }
 ```
 
-**Implementation:**
-- Uses go-git for `git fetch` operations
-- Compares local .src HEAD with remote refs
-- No caching needed - git fetch is fast
-- Outputs structured data for automation
-
-### Component 2: GitHub Webhook Receiver (PRIMARY TRIGGER)
-
-**Name:** `gh-webhook`
-**Location:** `ghw/` (new subsystem)
+### Mode 2: GitHub Webhook Receiver (SERVICE - PRIMARY MECHANISM)
 
 **Responsibilities:**
-1. Receive GitHub webhook events from upstream repos
-2. Validate HMAC signatures
-3. Trigger `task version:check` on push/release events
-4. Trigger rebuilds automatically
+1. Run as continuous service in Process Compose (DEV and USER)
+2. Receive GitHub webhook events from release repos
+3. Validate HMAC signatures
+4. Trigger updates automatically
+5. Hot-reload services after update
 
-**This is the PRIMARY mechanism - not "optional"!**
+**This is the PRIMARY mechanism and runs on ALL machines!**
 
-**Interface:**
+**Webhook flow - DEV machine (INCREMENTAL builds from source):**
 ```bash
-# Start webhook server (runs via Process Compose)
-ghw/.bin/gh-webhook serve --port 8080 --secret $WEBHOOK_SECRET
+# 1. DEV has all services running (including sync webhook server)
+task start:fg
 
-# Webhook flow:
-# 1. GitHub pushes to nats-io/nats-server
-# 2. Webhook POST to our server
-# 3. Validates signature
-# 4. Runs: task version:check SUBSYSTEM=nats
-# 5. If update available: task nats:src:update nats:bin:build
-# 6. Runs: task reload PROC=nats
+# 2. Upstream GitHub pushes new tag to nats-io/nats-server v2.10.25
+#    → Webhook POST to sync service at http://dev-machine:8080/webhook/nats
+
+# 3. sync service validates HMAC signature
+
+# 4. sync service runs internal check:
+#    Detects nats v2.10.24 → v2.10.25 update available
+
+# 5. sync service executes INCREMENTAL DEV workflow:
+#    task nats:src:update     # Pull latest source (ONLY nats!)
+#    task nats:bin:build      # Rebuild from source (ONLY nats!)
+#    task bin:verify          # Verify checksum
+
+# 6. sync service hot-reloads ONLY affected service:
+#    task reload PROC=nats
+
+# 7. DEV packages ONLY updated binary:
+#    task nats:package        # Package ONLY nats binary
+#    gh release create v1.2.3-nats .dist/nats-*.tar.gz
+#    OR
+#    gh release upload v1.2.3 .dist/nats-*.tar.gz  # Add to existing release
+
+# 8. Webhook fires for plat-telemetry release
+#    → Notifies USER machines that NATS binary updated
 ```
 
-**Setup required:**
-- Configure webhooks on upstream repos (or fork them and watch forks)
-- Set webhook secret in .env
-- Expose webhook endpoint (ngrok for dev, proper domain for prod)
+**Key insight: INCREMENTAL everything!**
+- Webhook specifies WHICH subsystem (nats, arc, liftbridge, etc.)
+- Update ONLY that subsystem's source
+- Rebuild ONLY that subsystem's binary
+- Package ONLY that subsystem
+- Release ONLY that binary (or add to existing release)
+- USERs download ONLY the updated binary
+- Hot-reload ONLY the affected service
 
-### Component 3: Taskfile Integration
+**Webhook flow - USER machine (INCREMENTAL binary downloads):**
+```bash
+# 1. USER has all services running (including sync webhook server)
+task start:fg
+
+# 2. DEV uploads nats binary to plat-telemetry release v1.2.3
+#    → Webhook POST to sync service at http://user-machine:8080/webhook/nats
+
+# 3. sync service validates HMAC signature
+
+# 4. sync service runs internal check:
+#    Detects nats binary updated in release
+
+# 5. sync service executes INCREMENTAL USER workflow:
+#    task nats:bin:download   # Download ONLY nats binary
+#    task bin:verify          # Verify checksum
+
+# 6. sync service hot-reloads ONLY affected service:
+#    task reload PROC=nats
+
+# Result: USER's machine updated ONLY nats automatically
+#         arc, liftbridge, telegraf unchanged (no unnecessary downloads/reloads)
+```
+
+**Real-time INCREMENTAL updates to 1,000s of machines:**
+- nats-io releases v2.10.25 → DEV rebuilds ONLY nats → packages ONLY nats → uploads to release
+- plat-telemetry release updated → ALL USER machines download ONLY nats + reload ONLY nats
+- arcopen releases v1.0.1 → DEV rebuilds ONLY arc → packages ONLY arc → uploads to release
+- plat-telemetry release updated → ALL USER machines download ONLY arc + reload ONLY arc
+- **INCREMENTAL**: Only affected subsystems rebuilt/downloaded/reloaded
+- Entire pipeline automated, zero polling, instant targeted updates
+- Works for desktops, servers, all deployed environments
+
+**Setup required:**
+- **DEVs**: Configure webhooks on upstream repos (nats-io, arcopen, etc.)
+- **USERs**: Configure webhook on joeblew999/plat-telemetry releases
+- Both: Set webhook secret in .env
+- Both: Expose webhook endpoint (ngrok, cloudflare tunnel, or public IP)
+- Both: `sync` runs as service in Process Compose
+
+### Taskfile Integration
 
 **New tasks in root Taskfile.yml:**
 
 ```yaml
-version:check:
-  desc: Check subsystems for upstream updates (git fetch, NO polling)
+sync:check:
+  desc: Check subsystems for updates (manual testing only)
   cmds:
-    - vc/.bin/version-checker check {{.SUBSYSTEM | default "all"}}
+    - sync/.bin/sync check {{.SUBSYSTEM | default "all"}}
 
-version:update:
-  desc: Update subsystems with available updates
+sync:update:
+  desc: Update subsystems with available updates (called by webhook)
   cmds:
     - |
-      # This runs AFTER webhook trigger or manual check
-      UPDATES=$(vc/.bin/version-checker check --json)
+      # Called by webhook when updates detected
+      # Detects DEV vs USER mode automatically
+      UPDATES=$(sync/.bin/sync check --json)
       for subsystem in $(echo $UPDATES | jq -r '.[] | select(.update_available) | .name'); do
         echo "▶ Updating $subsystem..."
-        task $subsystem:src:update
-        task $subsystem:bin:build
+
+        # DEV mode: rebuild from source
+        if [ -d "$subsystem/.src" ]; then
+          task $subsystem:src:update
+          task $subsystem:bin:build
+        # USER mode: download pre-built binary
+        else
+          task $subsystem:bin:download
+        fi
+
         task bin:verify
         task reload PROC=$subsystem
       done
+```
 
-version:watch:
-  desc: Start webhook server to watch upstream repos
+**sync/Taskfile.yml (standard service pattern with BOTH workflows):**
+
+```yaml
+version: '3'
+
+vars:
+  BIN_NAME: sync
+  BIN_DIR: .bin
+  BIN_PATH: "{{.BIN_DIR}}/{{.BIN_NAME}}"
+  UPSTREAM_REPO: https://github.com/joeblew999/plat-telemetry
+  UPSTREAM_BRANCH: main
+
+# src: tasks (source management - DEV only)
+src:clone:
+  desc: Clone sync source (DEV only)
   cmds:
-    - task ghw:run  # Runs webhook server via Process Compose
+    - git clone {{.UPSTREAM_REPO}} .src
+    - cd .src && git checkout {{.UPSTREAM_BRANCH}}
+  status:
+    - test -d .src
+
+src:update:
+  desc: Update sync source (DEV only)
+  dir: .src
+  cmds:
+    - git fetch origin
+    - git checkout {{.UPSTREAM_BRANCH}}
+    - git pull origin {{.UPSTREAM_BRANCH}}
+
+# bin: tasks (binary artifacts)
+bin:build:
+  desc: Build sync binary from source (DEV)
+  sources:
+    - ".src/**/*.go"
+    - ".src/go.mod"
+    - ".src/go.sum"
+  generates:
+    - "{{.BIN_PATH}}"
+    - "{{.BIN_DIR}}/.version"
+  env:
+    GOWORK: off
+  cmds:
+    - mkdir -p {{.BIN_DIR}}
+    - cd .src && go build -o ../{{.BIN_PATH}} .
+    - |
+      # Generate .version file
+      cd .src
+      echo "commit: $(git rev-parse --short HEAD)" > ../{{.BIN_DIR}}/.version
+      echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ../{{.BIN_DIR}}/.version
+      echo "checksum: $(shasum -a 256 ../{{.BIN_PATH}} | awk '{print $1}')" >> ../{{.BIN_DIR}}/.version
+
+bin:download:
+  desc: Download pre-built sync binary (USER)
+  vars:
+    RELEASE_REPO: '{{.RELEASE_REPO | default "joeblew99/plat-telemetry"}}'
+    RELEASE_VERSION: '{{.RELEASE_VERSION | default "latest"}}'
+  cmds:
+    - mkdir -p {{.BIN_DIR}}
+    - |
+      # Download sync binary from GitHub release
+      gh release download {{.RELEASE_VERSION}} \
+        --repo {{.RELEASE_REPO}} \
+        --pattern "sync-{{OS}}-{{ARCH}}.tar.gz" \
+        --output - | tar xz -C {{.BIN_DIR}}
+    - chmod +x {{.BIN_PATH}}
+
+# Service tasks
+deps:
+  desc: Download Go dependencies (DEV only)
+  dir: .src
+  cmds:
+    - go mod download
+  status:
+    - test -d .src/vendor || test -f .src/go.sum
+
+ensure:
+  desc: Ensure binary exists (build or download if missing)
+  cmds:
+    - |
+      # DEV mode: build from source
+      if [ -d .src ]; then
+        task bin:build
+      # USER mode: download binary
+      else
+        task bin:download
+      fi
+  status:
+    - test -f {{.BIN_PATH}}
+
+health:
+  desc: Check webhook server health
+  cmds:
+    - curl -f http://localhost:8080/health || exit 1
+
+run:
+  desc: Run webhook server (called by Process Compose)
+  deps: [ensure]
+  cmds:
+    - "{{.BIN_PATH}} watch --port 8080 --secret ${WEBHOOK_SECRET}"
+
+test:
+  desc: Run unit tests (DEV only)
+  dir: .src
+  cmds:
+    - go test -v ./...
+
+package:
+  desc: Package sync binary for release (DEV only)
+  vars:
+    DIST_DIR: '{{.DIST_DIR | default "../.dist"}}'
+  cmds:
+    - mkdir -p {{.DIST_DIR}}
+    - tar czf {{.DIST_DIR}}/sync-{{.OS}}-{{.ARCH}}.tar.gz -C {{.BIN_DIR}} {{.BIN_NAME}} .version
+
+# clean: tasks
+clean:
+  desc: Clean built binaries
+  cmds:
+    - rm -rf {{.BIN_DIR}}
+
+clean:data:
+  desc: Clean runtime data (none for sync)
+  cmds:
+    - echo "No data to clean"
+
+clean:src:
+  desc: Clean source directory (DEV only)
+  cmds:
+    - rm -rf .src
 ```
 
 **NO SCHEDULED CI CHECKS!**
-- Webhooks notify us instantly when upstream changes
-- Manual `task version:check` for testing only
-- CI only builds/tests, doesn't poll versions
-
-```yaml
-name: Version Check
-
-on:
-  schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
-  workflow_dispatch:
-
-jobs:
-  check-versions:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Check for updates
-        run: task version:check
-
-      - name: Create PR if updates available
-        if: updates_available
-        run: |
-          task version:update
-          # Create PR with changes
-```
+- Webhooks notify instantly when releases happen (PRIMARY mechanism)
+- Manual `task sync:check` for testing only
+- CI only builds/tests/packages, NEVER polls versions
+- Works for BOTH DEV (build from source) and USER (download binaries)
 
 ## Implementation Phases
 
