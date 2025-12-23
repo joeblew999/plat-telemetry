@@ -16,17 +16,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
+  build:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
-
-    environment:
-      name: ${{ github.ref == 'refs/heads/main' && runner.os == 'Linux' && 'github-pages' || '' }}
-      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - uses: actions/checkout@v4
@@ -55,17 +51,34 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  pages:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
       - name: Build pages
-        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         run: task ci:pages
 
       - name: Upload pages artifact
-        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/.dist
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         id: deployment
         uses: actions/deploy-pages@v4
