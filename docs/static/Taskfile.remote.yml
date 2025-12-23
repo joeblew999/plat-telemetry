@@ -1,0 +1,86 @@
+# Remote Taskfile for plat-telemetry
+# Users can download this file and run: TASK_X_REMOTE_TASKFILES=1 task <command>
+#
+# Or include it in their own Taskfile:
+#   includes:
+#     plat:
+#       taskfile: https://joeblew999.github.io/plat-telemetry/Taskfile.remote.yml
+
+version: '3'
+
+vars:
+  RELEASE_REPO: joeblew999/plat-telemetry
+  RELEASE_VERSION: latest
+  DIST_DIR: '{{.ROOT_DIR}}/.dist'
+  # Base URL for remote taskfile includes
+  REMOTE_BASE: https://joeblew999.github.io/plat-telemetry/taskfiles
+
+includes:
+  arc:
+    taskfile: '{{.REMOTE_BASE}}/arc/Taskfile.yml'
+  docs:
+    taskfile: '{{.REMOTE_BASE}}/docs/Taskfile.yml'
+  gh:
+    taskfile: '{{.REMOTE_BASE}}/gh/Taskfile.yml'
+  grafana:
+    taskfile: '{{.REMOTE_BASE}}/grafana/Taskfile.yml'
+  liftbridge:
+    taskfile: '{{.REMOTE_BASE}}/liftbridge/Taskfile.yml'
+  nats:
+    taskfile: '{{.REMOTE_BASE}}/nats/Taskfile.yml'
+  pc:
+    taskfile: '{{.REMOTE_BASE}}/pc/Taskfile.yml'
+  service:
+    taskfile: '{{.REMOTE_BASE}}/service/Taskfile.yml'
+  sync:
+    taskfile: '{{.REMOTE_BASE}}/sync/Taskfile.yml'
+  telegraf:
+    taskfile: '{{.REMOTE_BASE}}/telegraf/Taskfile.yml'
+  utm:
+    taskfile: '{{.REMOTE_BASE}}/utm/Taskfile.yml'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  # User workflow - download pre-built binaries
+  bin:download:
+    desc: Download pre-built binaries from release (for users)
+    deps:
+      - arc:bin:download
+      - docs:bin:download
+      - gh:bin:download
+      - liftbridge:bin:download
+      - nats:bin:download
+      - pc:bin:download
+      - telegraf:bin:download
+
+  start:
+    desc: Start all services with Process Compose
+    cmds:
+      - task pc:run
+
+  start:fg:
+    desc: Start all services in foreground (no TUI)
+    cmds:
+      - task pc:run:fg
+
+  status:
+    desc: Show status of all processes
+    cmds:
+      - task pc:status
+
+  stop:
+    desc: Stop all services
+    cmds:
+      - task pc:stop
+
+  clean:
+    desc: Clean all build artifacts
+    cmds:
+      - task arc:clean
+      - task liftbridge:clean
+      - task nats:clean
+      - task telegraf:clean

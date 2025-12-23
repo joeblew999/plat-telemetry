@@ -1,0 +1,29 @@
+# Local test for remote Taskfiles
+# Run with: TASK_X_REMOTE_TASKFILES=1 task -t Taskfile.remote-test.yml --list
+#
+# Requires Hugo running: task docs:run (serves at localhost:1313)
+
+version: '3'
+
+vars:
+  RELEASE_REPO: joeblew999/plat-telemetry
+  RELEASE_VERSION: latest
+  DIST_DIR: '{{.ROOT_DIR}}/.dist'
+  # Local test URL (Hugo dev server)
+  REMOTE_BASE: http://localhost:1313/plat-telemetry/taskfiles
+
+includes:
+  nats:
+    taskfile: '{{.REMOTE_BASE}}/nats/Taskfile.yml'
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  test:
+    desc: Test that remote include works
+    cmds:
+      - echo "Remote Taskfile include works!"
+      - 'echo "NATS version configured as {{.NATS_VERSION | default "not-set"}}"'

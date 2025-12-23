@@ -1,0 +1,158 @@
+version: '3'
+
+vars:
+  ARC_BIN_NAME: arc
+  ARC_UPSTREAM_REPO: https://github.com/basekick-labs/arc.git
+  ARC_VERSION: '{{.ARC_VERSION | default "main"}}'
+  ARC_SRC: '{{.TASKFILE_DIR}}/.src'
+  ARC_BIN: '{{.TASKFILE_DIR}}/.bin'
+  ARC_BIN_PATH: '{{.ARC_BIN}}/{{.ARC_BIN_NAME}}'
+  ARC_DATA: '{{.TASKFILE_DIR}}/.data'
+  ARC_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks
+  src:clone:
+    desc: Clone the upstream repository at pinned version
+    cmds:
+      - git clone --branch {{.ARC_VERSION}} --depth 1 {{.ARC_UPSTREAM_REPO}} {{.ARC_SRC}}
+    status:
+      - test -d {{.ARC_SRC}}
+
+  src:update:
+    desc: Fetch and checkout pinned version
+    deps: [src:clone]
+    dir: '{{.ARC_SRC}}'
+    cmds:
+      - git fetch origin {{.ARC_VERSION}}
+      - git checkout {{.ARC_VERSION}}
+
+  # bin: tasks
+  bin:build:
+    desc: Build arc binary
+    deps: [src:clone]
+    dir: '{{.ARC_SRC}}'
+    status:
+      - test -f {{.ARC_BIN_PATH}}
+    cmds:
+      - mkdir -p {{.ARC_BIN}}
+      - go build -o {{.ARC_BIN_PATH}} ./cmd/arc
+      - |
+        {
+          echo "commit: $(git -C {{.ARC_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.ARC_BIN_PATH}} | awk '{print $1}')"
+        } > {{.ARC_BIN}}/.version
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.ARC_BIN}}
+      - curl -L {{.ARC_RELEASE_URL}}/{{.ARC_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.ARC_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.ARC_BIN}}/.version
+    status:
+      - test -f {{.ARC_BIN_PATH}}
+
+  # dev: tasks
+  dev:run:
+    desc: Run arc from source (development mode)
+    deps: [src:clone]
+    dir: '{{.ARC_SRC}}'
+    cmds:
+      - mkdir -p {{.ARC_DATA}}
+      - go run ./cmd/arc --config {{.TASKFILE_DIR}}/arc.toml
+
+  # Service tasks
+  bench:
+    desc: Run benchmarks
+    deps: [src:clone]
+    dir: '{{.ARC_SRC}}'
+    cmds:
+      - go test -bench=. -benchmem ./...
+
+  deps:
+    desc: Download dependencies
+    deps: [src:clone]
+    dir: '{{.ARC_SRC}}'
+    cmds:
+      - go mod download
+    status:
+      - test -d {{.ARC_SRC}}/vendor || go list -m all >/dev/null 2>&1
+
+  ensure:
+    desc: Ensure binary exists (build or download)
+    status:
+      - test -f {{.ARC_BIN_PATH}}
+    cmds:
+      - task: bin:download
+
+  health:
+    desc: Check if Arc is healthy
+    cmds:
+      - curl -sf http://localhost:8000/health > /dev/null
+
+  install:
+    desc: Install arc binary
+    deps: [src:clone]
+    dir: '{{.ARC_SRC}}'
+    cmds:
+      - go install ./cmd/arc
+
+  run:
+    desc: Run arc binary
+    dir: '{{.TASKFILE_DIR}}'
+    deps: [ensure]
+    cmds:
+      - mkdir -p {{.ARC_DATA}}
+      - '{{.ARC_BIN_PATH}} --config arc.toml'
+
+  test:
+    desc: Run tests
+    deps: [src:clone]
+    dir: '{{.ARC_SRC}}'
+    cmds:
+      - go test -v ./...
+
+  package:
+    desc: Package binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+    cmds:
+      - tar -czvf {{.DIST}}/{{.ARC_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.ARC_BIN}} {{.ARC_BIN_NAME}}
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.ARC_BIN}}
+    status:
+      - '! test -d {{.ARC_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.ARC_SRC}} {{.ARC_BIN}} {{.ARC_DATA}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.ARC_DATA}}
+    status:
+      - '! test -d {{.ARC_DATA}}'
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.ARC_SRC}}
+    status:
+      - '! test -d {{.ARC_SRC}}'

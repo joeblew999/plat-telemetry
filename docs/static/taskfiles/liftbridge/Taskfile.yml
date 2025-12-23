@@ -1,0 +1,158 @@
+version: '3'
+
+vars:
+  LB_BIN_NAME: liftbridge
+  LB_UPSTREAM_REPO: https://github.com/Basekick-Labs/liftbridge.git
+  LB_VERSION: '{{.LB_VERSION | default "master"}}'
+  LB_SRC: '{{.TASKFILE_DIR}}/.src'
+  LB_BIN: '{{.TASKFILE_DIR}}/.bin'
+  LB_BIN_PATH: '{{.LB_BIN}}/{{.LB_BIN_NAME}}'
+  LB_DATA: '{{.TASKFILE_DIR}}/.data'
+  LB_CONFIG: '{{.TASKFILE_DIR}}/configs'
+  LB_MODE: '{{.LB_MODE | default "standalone"}}'  # standalone or cluster
+  LB_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks
+  src:clone:
+    desc: Clone the upstream repository at pinned version
+    cmds:
+      - git clone --branch {{.LB_VERSION}} --depth 1 {{.LB_UPSTREAM_REPO}} {{.LB_SRC}}
+    status:
+      - test -d {{.LB_SRC}}
+
+  src:update:
+    desc: Fetch and checkout pinned version
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    cmds:
+      - git fetch --tags
+      - git checkout {{.LB_VERSION}}
+
+  # bin: tasks
+  bin:build:
+    desc: Build liftbridge server
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    status:
+      - test -f {{.LB_BIN_PATH}}
+    cmds:
+      - mkdir -p {{.LB_BIN}}
+      - go build -o {{.LB_BIN_PATH}} .
+      - |
+        {
+          echo "commit: $(git -C {{.LB_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.LB_BIN_PATH}} | awk '{print $1}')"
+        } > {{.LB_BIN}}/.version
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.LB_BIN}}
+      - curl -L {{.LB_RELEASE_URL}}/{{.LB_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.LB_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.LB_BIN}}/.version
+    status:
+      - test -f {{.LB_BIN_PATH}}
+
+  # dev: tasks
+  dev:run:
+    desc: Run liftbridge from source (development mode)
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    cmds:
+      - mkdir -p {{.LB_DATA}}
+      - go run . --data-dir={{.LB_DATA}}
+
+  # Service tasks
+  config:version:
+    desc: Output the pinned version (for sync poller)
+    cmds:
+      - echo "{{.LB_VERSION}}"
+    silent: true
+
+  deps:
+    desc: Download dependencies
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    cmds:
+      - go mod download
+    status:
+      - test -d {{.LB_SRC}}/vendor || go list -m all >/dev/null 2>&1
+
+  ensure:
+    desc: Ensure binary exists (build or download)
+    status:
+      - test -f {{.LB_BIN_PATH}}
+    cmds:
+      - task: bin:download
+
+  health:
+    desc: Check if Liftbridge is healthy
+    cmds:
+      - nc -z localhost 9292
+
+  install:
+    desc: Install liftbridge binary
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    cmds:
+      - go install .
+
+  run:
+    desc: Run liftbridge binary (standalone or cluster mode)
+    deps: [ensure]
+    cmds:
+      - mkdir -p {{.LB_DATA}}
+      - '{{.LB_BIN_PATH}} --config={{.LB_CONFIG}}/{{.LB_MODE}}.yaml --data-dir={{.LB_DATA}}'
+
+  test:
+    desc: Run tests
+    deps: [src:clone]
+    dir: '{{.LB_SRC}}'
+    cmds:
+      - go test -v ./...
+
+  package:
+    desc: Package binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+    cmds:
+      - tar -czvf {{.DIST}}/{{.LB_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.LB_BIN}} {{.LB_BIN_NAME}}
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.LB_BIN}}
+    status:
+      - '! test -d {{.LB_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.LB_SRC}} {{.LB_BIN}} {{.LB_DATA}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.LB_DATA}}
+    status:
+      - '! test -d {{.LB_DATA}}'
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.LB_SRC}}
+    status:
+      - '! test -d {{.LB_SRC}}'
