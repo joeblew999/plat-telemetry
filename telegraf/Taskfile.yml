@@ -1,10 +1,12 @@
 version: '3'
 
 vars:
+  TG_BIN_NAME: telegraf
   TG_UPSTREAM_REPO: https://github.com/Basekick-Labs/telegraf.git
   TG_VERSION: '{{.TG_VERSION | default "master"}}'
   TG_SRC: '{{.TASKFILE_DIR}}/.src'
   TG_BIN: '{{.TASKFILE_DIR}}/.bin'
+  TG_BIN_PATH: '{{.TG_BIN}}/{{.TG_BIN_NAME}}'
   TG_DATA: '{{.TASKFILE_DIR}}/.data'
   TG_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
@@ -34,16 +36,16 @@ tasks:
     deps: [src:clone]
     dir: '{{.TG_SRC}}'
     status:
-      - test -f {{.TG_BIN}}/telegraf
+      - test -f {{.TG_BIN_PATH}}
     cmds:
       - mkdir -p {{.TG_BIN}}
       - make build
-      - cp telegraf {{.TG_BIN}}/
+      - cp {{.TG_BIN_NAME}} {{.TG_BIN}}/
       - |
         {
           echo "commit: $(git -C {{.TG_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
           echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.TG_BIN}}/telegraf | awk '{print $1}')"
+          echo "checksum: $(shasum -a 256 {{.TG_BIN_PATH}} | awk '{print $1}')"
         } > {{.TG_BIN}}/.version
 
   bin:download:
@@ -55,10 +57,10 @@ tasks:
         sh: go env GOARCH
     cmds:
       - mkdir -p {{.TG_BIN}}
-      - curl -L {{.TG_RELEASE_URL}}/telegraf-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.TG_BIN}}
+      - curl -L {{.TG_RELEASE_URL}}/{{.TG_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.TG_BIN}}
       - echo "{{.RELEASE_VERSION}}" > {{.TG_BIN}}/.version
     status:
-      - test -f {{.TG_BIN}}/telegraf
+      - test -f {{.TG_BIN_PATH}}
 
   # dev: tasks
   dev:run:
@@ -79,9 +81,9 @@ tasks:
   config:
     desc: Generate sample config
     preconditions:
-      - test -f {{.TG_BIN}}/telegraf
+      - test -f {{.TG_BIN_PATH}}
     cmds:
-      - '{{.TG_BIN}}/telegraf config > telegraf.sample.conf'
+      - '{{.TG_BIN_PATH}} config > telegraf.sample.conf'
 
   deps:
     desc: Download dependencies
@@ -93,16 +95,16 @@ tasks:
       - test -d {{.TG_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (build or download)
+    desc: Ensure binary exists (download from release, fallback to build)
     status:
-      - test -f {{.TG_BIN}}/telegraf
+      - test -f {{.TG_BIN_PATH}}
     cmds:
-      - task: bin:download
+      - task bin:download || task bin:build
 
   health:
     desc: Check if Telegraf is healthy
     cmds:
-      - pgrep -f "telegraf --config" > /dev/null
+      - pgrep -f "{{.TG_BIN_NAME}} --config" > /dev/null
 
   install:
     desc: Install telegraf binary
@@ -114,10 +116,10 @@ tasks:
   plugins:
     desc: List available plugins
     preconditions:
-      - test -f {{.TG_BIN}}/telegraf
+      - test -f {{.TG_BIN_PATH}}
     cmds:
-      - '{{.TG_BIN}}/telegraf --input-list'
-      - '{{.TG_BIN}}/telegraf --output-list'
+      - '{{.TG_BIN_PATH}} --input-list'
+      - '{{.TG_BIN_PATH}} --output-list'
 
   run:
     desc: Run telegraf binary
@@ -125,7 +127,7 @@ tasks:
     deps: [ensure]
     cmds:
       - mkdir -p {{.TG_DATA}}
-      - '{{.TG_BIN}}/telegraf --config telegraf.conf'
+      - '{{.TG_BIN_PATH}} --config telegraf.conf'
 
   test:
     desc: Run tests
@@ -147,9 +149,8 @@ tasks:
       GOOS: '{{.GOOS | default OS}}'
       GOARCH: '{{.GOARCH | default ARCH}}'
       DIST: '{{.DIST | default .DIST_DIR}}'
-      BINARY_NAME: telegraf
     cmds:
-      - tar -czvf {{.DIST}}/{{.BINARY_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.TG_BIN}} {{.BINARY_NAME}}
+      - tar -czvf {{.DIST}}/{{.TG_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.TG_BIN}} {{.TG_BIN_NAME}}
 
   # clean: tasks
   clean:

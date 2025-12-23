@@ -16,73 +16,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Build binaries (parallel per OS)
-  build:
+  ci:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          cache: false
-
-      - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@latest
-
-      - name: Build binaries
-        run: task ci:build
-
-      - name: Upload binaries
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/upload-artifact@v4
-        with:
-          name: binaries-${{ runner.os }}-${{ runner.arch }}
-          path: .dist/
-
-  # Run tests (parallel per OS)
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-          cache: false
-
-      - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@latest
-
-      - name: Run tests
-        run: task ci:test
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ runner.os }}
-          path: .test-results/
-
-  # Build and deploy docs (Linux only, main branch only)
-  pages:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
 
     environment:
-      name: github-pages
+      name: ${{ github.ref == 'refs/heads/main' && runner.os == 'Linux' && 'github-pages' || '' }}
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
@@ -96,46 +39,33 @@ jobs:
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@latest
 
+      # Same commands as local dev!
+      - name: Build binaries
+        run: task ci:build
+
+      - name: Run tests
+        run: task ci:test
+
+      - name: Package binaries
+        run: task ci:package
+
+      - name: Release binaries
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+        run: task ci:release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build pages
+        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         run: task ci:pages
 
       - name: Upload pages artifact
+        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/.dist
 
       - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         id: deployment
         uses: actions/deploy-pages@v4
-
-  # Create release (tags only, after build completes)
-  release:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
-      - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@latest
-
-      - name: Get DIST_DIR
-        run: echo "DIST_DIR=$(task ci:dist)" >> $GITHUB_ENV
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ${{ env.DIST_DIR }}
-          pattern: binaries-*
-          merge-multiple: true
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ${{ env.DIST_DIR }}/*
-          generate_release_notes: true

@@ -1,0 +1,30 @@
+---
+# Liftbridge cluster configuration
+host: 0.0.0.0
+port: 9292
+
+# Connect to NATS server
+nats.servers:
+  - nats://127.0.0.1:4222
+
+# Clustering settings for cluster mode
+clustering.server.id: liftbridge-node-1
+clustering.raft.bootstrap.seed: false
+clustering.raft.snapshot.retain: 2
+clustering.raft.snapshot.threshold: 8192
+
+# Join existing cluster by specifying seed nodes
+# clustering.raft.bootstrap.peers:
+#   - liftbridge-node-1
+#   - liftbridge-node-2
+#   - liftbridge-node-3
+
+# Logging
+logging.level: info
+logging.nats: false
+
+# Stream settings
+streams.retention.max.age: 604800000000000  # 7 days in nanoseconds
+streams.replication.max.lag.time: 10000000000  # 10 seconds in nanoseconds
+streams.auto.pause.time: 300000000000  # 5 minutes in nanoseconds
+streams.auto.pause.disable.if.subscribers: true

@@ -1,0 +1,239 @@
+version: '3'
+
+vars:
+  # Binary name (cross-platform: packer on Unix, packer.exe on Windows)
+  UTM_BIN_NAME: packer
+  # Versions
+  UTM_PACKER_VERSION: '{{.UTM_PACKER_VERSION | default "1.12.0"}}'
+  # Project-local paths
+  UTM_BIN: '{{.TASKFILE_DIR}}/.bin'
+  UTM_BIN_PATH: '{{.UTM_BIN}}/{{.UTM_BIN_NAME}}'
+  UTM_DATA: '{{.TASKFILE_DIR}}/.data'
+  UTM_VAGRANT_HOME: '{{.TASKFILE_DIR}}/.data/vagrant'
+  UTM_PACKER_CACHE: '{{.TASKFILE_DIR}}/.data/packer/cache'
+  UTM_PACKER_PLUGINS: '{{.TASKFILE_DIR}}/.data/packer/plugins'
+  # System paths (for clean:system tasks)
+  UTM_SYS_CONTAINER: ~/Library/Containers/com.utmapp.UTM
+  UTM_SYS_SUPPORT: ~/Library/Application Support/UTM
+  UTM_SYS_CACHE: ~/Library/Caches/com.utmapp.UTM
+  UTM_SYS_PREFS: ~/Library/Preferences/com.utmapp.UTM.plist
+  UTM_SYS_PACKER_HOME: ~/.packer.d
+  UTM_SYS_PACKER_CACHE: ~/.cache/packer
+  UTM_SYS_VAGRANT_HOME: ~/.vagrant.d
+
+env:
+  VAGRANT_HOME: '{{.UTM_VAGRANT_HOME}}'
+  PACKER_CACHE_DIR: '{{.UTM_PACKER_CACHE}}'
+  PACKER_CONFIG_DIR: '{{.UTM_PACKER_PLUGINS}}'
+
+tasks:
+  # bin: tasks
+  bin:download:
+    desc: Download Packer binary
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.UTM_BIN}}
+      - curl -sL "https://releases.hashicorp.com/packer/{{.UTM_PACKER_VERSION}}/packer_{{.UTM_PACKER_VERSION}}_{{.GOOS}}_{{.GOARCH}}.zip" -o /tmp/{{.UTM_BIN_NAME}}.zip
+      - unzip -o /tmp/{{.UTM_BIN_NAME}}.zip -d {{.UTM_BIN}}
+      - rm /tmp/{{.UTM_BIN_NAME}}.zip
+      - chmod +x {{.UTM_BIN_PATH}}
+      - |
+        {
+          echo "version: {{.UTM_PACKER_VERSION}}"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.UTM_BIN_PATH}} | awk '{print $1}')"
+        } > {{.UTM_BIN}}/.version
+    status:
+      - test -f {{.UTM_BIN_PATH}}
+
+  # box: tasks
+  box:download:
+    desc: Pre-download vagrant boxes
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - vagrant box add naveenrajm7/ubuntu-24.04-aarch64 --provider utm || true
+      - vagrant box add naveenrajm7/debian-13-aarch64 --provider utm || true
+      - vagrant box add naveenrajm7/alpine-3.21-aarch64 --provider utm || true
+
+  box:list:
+    desc: List downloaded boxes
+    cmds:
+      - vagrant box list
+
+  # deps: tasks
+  deps:
+    desc: Install all dependencies
+    cmds:
+      - task: deps:packer
+      - task: deps:utm
+      - task: deps:vagrant
+      - task: deps:plugin
+
+  deps:packer:
+    desc: Download Packer binary
+    cmds:
+      - task: bin:download
+
+  deps:plugin:
+    desc: Install vagrant_utm plugin
+    deps: [deps:vagrant]
+    cmds:
+      - mkdir -p {{.UTM_VAGRANT_HOME}}
+      - vagrant plugin install vagrant_utm
+    status:
+      - vagrant plugin list | grep -q vagrant_utm
+
+  deps:utm:
+    desc: Install UTM via Homebrew
+    cmds:
+      - brew install --cask utm
+    status:
+      - test -d /Applications/UTM.app
+
+  deps:vagrant:
+    desc: Install Vagrant via Homebrew
+    cmds:
+      - brew install vagrant
+    status:
+      - command -v vagrant
+
+  # Service tasks (alphabetical)
+  config:version:
+    desc: Output the pinned Packer version (for sync poller)
+    cmds:
+      - echo "{{.UTM_PACKER_VERSION}}"
+    silent: true
+
+  destroy:
+    desc: Destroy VM(s)
+    vars:
+      VM: '{{.VM | default ""}}'
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - vagrant destroy -f {{.VM}}
+
+  down:
+    desc: Stop VM(s) gracefully
+    vars:
+      VM: '{{.VM | default ""}}'
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - vagrant halt {{.VM}}
+
+  ensure:
+    desc: Ensure Packer binary exists
+    status:
+      - test -f {{.UTM_BIN_PATH}}
+    cmds:
+      - task: bin:download
+
+  health:
+    desc: Check if any VMs are running
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - vagrant status | grep -q running
+
+  provision:
+    desc: Run provisioners on VM(s)
+    vars:
+      VM: '{{.VM | default ""}}'
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - vagrant provision {{.VM}}
+
+  reload:
+    desc: Reload VM(s) with updated Vagrantfile
+    vars:
+      VM: '{{.VM | default ""}}'
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - vagrant reload {{.VM}}
+
+  ssh:
+    desc: SSH into VM
+    vars:
+      VM: '{{.VM | default "ubuntu"}}'
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - vagrant ssh {{.VM}}
+
+  status:
+    desc: Show VM status
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - vagrant status
+
+  up:
+    desc: Start VM(s)
+    vars:
+      VM: '{{.VM | default ""}}'
+    dir: '{{.TASKFILE_DIR}}'
+    deps: [deps]
+    cmds:
+      - vagrant up {{.VM}} --provider=utm
+
+  # package: tasks
+  package:
+    desc: Package Packer binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+    cmds:
+      - tar -czvf {{.DIST}}/{{.UTM_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.UTM_BIN}} {{.UTM_BIN_NAME}}
+
+  # clean: tasks (alphabetical)
+  clean:
+    desc: Clean build artifacts (.bin/)
+    cmds:
+      - rm -rf {{.UTM_BIN}}
+    status:
+      - '! test -d {{.UTM_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.bin, .data, system deps)
+    cmds:
+      - rm -rf {{.UTM_BIN}} {{.UTM_DATA}}
+      - task: clean:deps
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.UTM_DATA}}
+    status:
+      - '! test -d {{.UTM_DATA}}'
+
+  clean:deps:
+    desc: Uninstall UTM and Vagrant via Homebrew
+    cmds:
+      - vagrant plugin uninstall vagrant_utm || true
+      - brew uninstall --cask utm || true
+      - brew uninstall vagrant || true
+
+  clean:system:
+    desc: Remove all system-level data
+    cmds:
+      - task: clean:system:packer
+      - task: clean:system:utm
+      - task: clean:system:vagrant
+
+  clean:system:packer:
+    desc: Remove Packer system data
+    cmds:
+      - rm -rf {{.UTM_SYS_PACKER_HOME}} {{.UTM_SYS_PACKER_CACHE}} ~/Library/Caches/packer
+
+  clean:system:utm:
+    desc: Remove UTM system data
+    cmds:
+      - rm -rf {{.UTM_SYS_CONTAINER}} {{.UTM_SYS_CACHE}}
+      - rm -rf '{{.UTM_SYS_SUPPORT}}'
+      - rm -f {{.UTM_SYS_PREFS}}
+
+  clean:system:vagrant:
+    desc: Remove Vagrant system data
+    cmds:
+      - rm -rf {{.UTM_SYS_VAGRANT_HOME}}

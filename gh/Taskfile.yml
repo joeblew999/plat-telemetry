@@ -1,10 +1,12 @@
 version: '3'
 
 vars:
+  GH_BIN_NAME: gh
   GH_UPSTREAM_REPO: https://github.com/cli/cli.git
   GH_VERSION: '{{.GH_VERSION | default "v2.83.2"}}'
   GH_SRC: '{{.TASKFILE_DIR}}/.src'
   GH_BIN: '{{.TASKFILE_DIR}}/.bin'
+  GH_BIN_PATH: '{{.GH_BIN}}/{{.GH_BIN_NAME}}'
   GH_DATA: '{{.TASKFILE_DIR}}/.data'
 
 env:
@@ -33,15 +35,15 @@ tasks:
     deps: [src:clone]
     dir: '{{.GH_SRC}}'
     status:
-      - test -f {{.GH_BIN}}/gh
+      - test -f {{.GH_BIN_PATH}}
     cmds:
       - mkdir -p {{.GH_BIN}}
-      - go build -o {{.GH_BIN}}/gh ./cmd/gh
+      - go build -o {{.GH_BIN_PATH}} ./cmd/gh
       - |
         {
           echo "commit: $(git -C {{.GH_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
           echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.GH_BIN}}/gh | awk '{print $1}')"
+          echo "checksum: $(shasum -a 256 {{.GH_BIN_PATH}} | awk '{print $1}')"
         } > {{.GH_BIN}}/.version
 
   bin:download:
@@ -53,10 +55,10 @@ tasks:
         sh: go env GOARCH
     cmds:
       - mkdir -p {{.GH_BIN}}
-      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/gh-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GH_BIN}}
+      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/{{.GH_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GH_BIN}}
       - echo "{{.RELEASE_VERSION}}" > {{.GH_BIN}}/.version
     status:
-      - test -f {{.GH_BIN}}/gh
+      - test -f {{.GH_BIN_PATH}}
 
   # dev: tasks
   dev:run:
@@ -68,6 +70,12 @@ tasks:
       - go run ./cmd/gh {{.CLI_ARGS}}
 
   # Service tasks
+  config:version:
+    desc: Output pinned version
+    cmds:
+      - echo "{{.GH_VERSION}}"
+    silent: true
+
   deps:
     desc: Download dependencies
     deps: [src:clone]
@@ -78,11 +86,11 @@ tasks:
       - test -d {{.GH_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (build or download)
+    desc: Ensure binary exists (download from release, fallback to build)
     status:
-      - test -f {{.GH_BIN}}/gh
+      - test -f {{.GH_BIN_PATH}}
     cmds:
-      - task: bin:download
+      - task bin:download || task bin:build
 
   install:
     desc: Install gh binary
@@ -104,9 +112,73 @@ tasks:
       GOOS: '{{.GOOS | default OS}}'
       GOARCH: '{{.GOARCH | default ARCH}}'
       DIST: '{{.DIST | default .DIST_DIR}}'
-      BINARY_NAME: gh
     cmds:
-      - tar -czvf {{.DIST}}/{{.BINARY_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.GH_BIN}} {{.BINARY_NAME}}
+      - tar -czvf {{.DIST}}/{{.GH_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.GH_BIN}} {{.GH_BIN_NAME}}
+
+  # workflow tasks
+  runs:list:
+    desc: List recent workflow runs
+    deps: [ensure]
+    cmds:
+      - '{{.GH_BIN_PATH}} run list --repo {{.RELEASE_REPO}} --limit 20'
+
+  runs:clean:
+    desc: Delete old workflow runs (keeps last 10, rate limited)
+    deps: [ensure]
+    vars:
+      KEEP: '{{.KEEP | default "10"}}'
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "▶ Fetching workflow runs for {{.REPO}}..."
+        RUNS=$({{.GH_BIN_PATH}} run list --repo {{.REPO}} --limit 100 --json databaseId,status,conclusion,createdAt --jq '.[].databaseId')
+
+        COUNT=0
+        DELETED=0
+        for RUN_ID in $RUNS; do
+          COUNT=$((COUNT + 1))
+          if [ $COUNT -le {{.KEEP}} ]; then
+            echo "⏭️  Keeping run $RUN_ID (within last {{.KEEP}})"
+            continue
+          fi
+
+          echo "🗑️  Deleting run $RUN_ID..."
+          {{.GH_BIN_PATH}} run delete $RUN_ID --repo {{.REPO}} || true
+          DELETED=$((DELETED + 1))
+
+          # Rate limit: sleep 1 second every 5 deletions
+          if [ $((DELETED % 5)) -eq 0 ]; then
+            echo "💤 Rate limiting (1s pause)..."
+            sleep 1
+          fi
+        done
+
+        echo "✅ Deleted $DELETED runs, kept {{.KEEP}}"
+
+  runs:clean:all:
+    desc: Delete ALL workflow runs (use with caution)
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "⚠️  Deleting ALL workflow runs for {{.REPO}}..."
+        RUNS=$({{.GH_BIN_PATH}} run list --repo {{.REPO}} --limit 500 --json databaseId --jq '.[].databaseId')
+
+        DELETED=0
+        for RUN_ID in $RUNS; do
+          echo "🗑️  Deleting run $RUN_ID..."
+          {{.GH_BIN_PATH}} run delete $RUN_ID --repo {{.REPO}} || true
+          DELETED=$((DELETED + 1))
+
+          # Rate limit: sleep 1 second every 5 deletions
+          if [ $((DELETED % 5)) -eq 0 ]; then
+            echo "💤 Rate limiting (1s pause)..."
+            sleep 1
+          fi
+        done
+
+        echo "✅ Deleted $DELETED runs"
 
   # clean: tasks
   clean:

@@ -1,9 +1,11 @@
 version: '3'
 
 vars:
+  GF_BIN_NAME: grafana-server
   GF_VERSION: '11.4.0'
   GF_DOWNLOAD_URL: 'https://dl.grafana.com/oss/release/grafana-{{.GF_VERSION}}.darwin-arm64.tar.gz'
   GF_BIN: '{{.TASKFILE_DIR}}/.bin'
+  GF_BIN_PATH: '{{.GF_BIN}}/bin/{{.GF_BIN_NAME}}'
   GF_DATA: '{{.TASKFILE_DIR}}/.data'
 
 tasks:
@@ -16,7 +18,7 @@ tasks:
       - xattr -r -d com.apple.quarantine {{.GF_BIN}}/ 2>/dev/null || true
       - echo "{{.GF_VERSION}}" > {{.GF_BIN}}/.version
     status:
-      - test -f {{.GF_BIN}}/bin/grafana-server
+      - test -f {{.GF_BIN_PATH}}
 
   src:update:
     desc: Re-download Grafana (update GF_VERSION var first)
@@ -28,7 +30,7 @@ tasks:
   bin:build:
     desc: Grafana is pre-built (no-op)
     status:
-      - test -f {{.GF_BIN}}/bin/grafana-server
+      - test -f {{.GF_BIN_PATH}}
     cmds:
       - echo "Grafana is pre-built, nothing to compile"
 
@@ -44,7 +46,7 @@ tasks:
       - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/grafana-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GF_BIN}}
       - echo "{{.RELEASE_VERSION}}" > {{.GF_BIN}}/.version
     status:
-      - test -f {{.GF_BIN}}/bin/grafana-server
+      - test -f {{.GF_BIN_PATH}}
 
   # Service tasks
   deps:
@@ -55,7 +57,7 @@ tasks:
   ensure:
     desc: Ensure binary exists (download if needed)
     status:
-      - test -f {{.GF_BIN}}/bin/grafana-server
+      - test -f {{.GF_BIN_PATH}}
     cmds:
       - task: bin:download
 
@@ -79,13 +81,13 @@ tasks:
       - mkdir -p {{.GF_DATA}}/plugins
       - mkdir -p {{.GF_DATA}}/provisioning/dashboards
       - mkdir -p {{.GF_DATA}}/provisioning/datasources
-      - '{{.GF_BIN}}/bin/grafana-server --homepath={{.GF_BIN}} --config={{.TASKFILE_DIR}}/grafana.ini cfg:default.paths.data={{.GF_DATA}} cfg:default.paths.plugins={{.GF_DATA}}/plugins cfg:default.paths.provisioning={{.GF_DATA}}/provisioning'
+      - '{{.GF_BIN_PATH}} --homepath={{.GF_BIN}} --config={{.TASKFILE_DIR}}/grafana.ini cfg:default.paths.data={{.GF_DATA}} cfg:default.paths.plugins={{.GF_DATA}}/plugins cfg:default.paths.provisioning={{.GF_DATA}}/provisioning'
 
   test:
     desc: Validate Grafana binary works
     deps: [ensure]
     cmds:
-      - '{{.GF_BIN}}/bin/grafana-server --version'
+      - '{{.GF_BIN_PATH}} --version'
 
   package:
     desc: Package Grafana for release

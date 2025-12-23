@@ -1,8 +1,9 @@
 version: '3'
 
 vars:
+  SVC_BIN_NAME: plat-telemetry-svc
   SVC_BIN: '{{.TASKFILE_DIR}}/.bin'
-  SVC_BIN_PATH: '{{.SVC_BIN}}/plat-telemetry-svc'
+  SVC_BIN_PATH: '{{.SVC_BIN}}/{{.SVC_BIN_NAME}}'
 
 env:
   GOWORK: off

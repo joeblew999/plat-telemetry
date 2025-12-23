@@ -1,10 +1,12 @@
 version: '3'
 
 vars:
+  LB_BIN_NAME: liftbridge
   LB_UPSTREAM_REPO: https://github.com/Basekick-Labs/liftbridge.git
   LB_VERSION: '{{.LB_VERSION | default "master"}}'
   LB_SRC: '{{.TASKFILE_DIR}}/.src'
   LB_BIN: '{{.TASKFILE_DIR}}/.bin'
+  LB_BIN_PATH: '{{.LB_BIN}}/{{.LB_BIN_NAME}}'
   LB_DATA: '{{.TASKFILE_DIR}}/.data'
   LB_CONFIG: '{{.TASKFILE_DIR}}/configs'
   LB_MODE: '{{.LB_MODE | default "standalone"}}'  # standalone or cluster
@@ -36,15 +38,15 @@ tasks:
     deps: [src:clone]
     dir: '{{.LB_SRC}}'
     status:
-      - test -f {{.LB_BIN}}/liftbridge
+      - test -f {{.LB_BIN_PATH}}
     cmds:
       - mkdir -p {{.LB_BIN}}
-      - go build -o {{.LB_BIN}}/liftbridge .
+      - go build -o {{.LB_BIN_PATH}} .
       - |
         {
           echo "commit: $(git -C {{.LB_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
           echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.LB_BIN}}/liftbridge | awk '{print $1}')"
+          echo "checksum: $(shasum -a 256 {{.LB_BIN_PATH}} | awk '{print $1}')"
         } > {{.LB_BIN}}/.version
 
   bin:download:
@@ -56,10 +58,10 @@ tasks:
         sh: go env GOARCH
     cmds:
       - mkdir -p {{.LB_BIN}}
-      - curl -L {{.LB_RELEASE_URL}}/liftbridge-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.LB_BIN}}
+      - curl -L {{.LB_RELEASE_URL}}/{{.LB_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.LB_BIN}}
       - echo "{{.RELEASE_VERSION}}" > {{.LB_BIN}}/.version
     status:
-      - test -f {{.LB_BIN}}/liftbridge
+      - test -f {{.LB_BIN_PATH}}
 
   # dev: tasks
   dev:run:
@@ -87,11 +89,11 @@ tasks:
       - test -d {{.LB_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (build or download)
+    desc: Ensure binary exists (download from release, fallback to build)
     status:
-      - test -f {{.LB_BIN}}/liftbridge
+      - test -f {{.LB_BIN_PATH}}
     cmds:
-      - task: bin:download
+      - task bin:download || task bin:build
 
   health:
     desc: Check if Liftbridge is healthy
@@ -110,7 +112,7 @@ tasks:
     deps: [ensure]
     cmds:
       - mkdir -p {{.LB_DATA}}
-      - '{{.LB_BIN}}/liftbridge --config={{.LB_CONFIG}}/{{.LB_MODE}}.yaml --data-dir={{.LB_DATA}}'
+      - '{{.LB_BIN_PATH}} --config={{.LB_CONFIG}}/{{.LB_MODE}}.yaml --data-dir={{.LB_DATA}}'
 
   test:
     desc: Run tests
@@ -125,9 +127,8 @@ tasks:
       GOOS: '{{.GOOS | default OS}}'
       GOARCH: '{{.GOARCH | default ARCH}}'
       DIST: '{{.DIST | default .DIST_DIR}}'
-      BINARY_NAME: liftbridge
     cmds:
-      - tar -czvf {{.DIST}}/{{.BINARY_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.LB_BIN}} {{.BINARY_NAME}}
+      - tar -czvf {{.DIST}}/{{.LB_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.LB_BIN}} {{.LB_BIN_NAME}}
 
   # clean: tasks
   clean:

@@ -1,0 +1,309 @@
+# CLAUDE
+
+## Behavior Rules
+
+STOP TELLING the User to do things. DOG FOOD your own shit! Stop being so lazy!
+
+ALWAYS be RUNNING `task start` OR `task start:attach` so you can't CHEAT!
+
+STOP touching the OS. Use project-level encapsulation, because hundreds of AIs are crawling over the OS changing things!
+
+NEVER EVER JUST PUSH TO GITHUB CI and PRAY!
+
+ONLY ever have a single GitHub workflow for CI.
+
+## Round-Trip Testing
+
+**MUST check GitHub CI via local Taskfile before pushing.** The entire CI workflow is testable locally:
+
+```bash
+# Test the EXACT same CI workflow that runs on GitHub
+task ci
+
+# Or test individual CI phases
+task ci:build    # Build all binaries
+task ci:test     # Run regression tests
+task ci:package  # Package for release (conditional on git tags)
+task ci:pages    # Build docs (conditional on main branch)
+```
+
+**ALWAYS run Process Compose via Task.** Never call `process-compose` directly - use Task wrappers:
+
+```bash
+# Start services (foreground)
+task start:fg
+
+# Start services (background)
+task start
+
+# Check service status
+task status
+
+# Reload a specific service
+task reload PROC=nats
+
+# Stop all services
+task stop
+```
+
+**FULLY round-trip in real-time.** Before pushing ANY changes:
+1. Run `task ci` locally - validates build, tests, packaging
+2. Keep `task start:fg` running in background terminal - validates services stay healthy
+3. Run `task test:reload:all` - validates hot-reload workflows
+4. Only push after ALL local validation passes
+
+This implements "NEVER PUSH TO CI AND PRAY" - catch ALL issues locally before GitHub CI runs.
+
+## Architecture Principles
+
+**EVERYTHING runs via Task.** You, me, users, CI, services - EVERYTHING. There is NO other way to run anything. If you find yourself:
+- Running binaries directly (e.g., `sync/.bin/sync poll`) - WRONG, use `task sync:poll`
+- Changing directories with `cd` - WRONG, Task controls working directory via `dir:`
+- Using custom environment variables for paths - WRONG, Task provides `{{.ROOT_DIR}}`, `{{.TASKFILE_DIR}}`, etc.
+- Running commands from subdirectories - WRONG, always run from root via `task <subsystem>:<task>`
+
+**Taskfiles are the source of truth.** Everything runs through `task` - DEV, CI, OPS use identical commands.
+
+**Root-level configuration variables** (defined in root Taskfile.yml):
+- `RELEASE_REPO` - GitHub repository for releases (e.g., `joeblew999/plat-telemetry`)
+- `RELEASE_VERSION` - Release version tag (e.g., `latest`, `v1.0.0`)
+- `DIST_DIR` - Directory for packaged release artifacts (defaults to `{{.ROOT_DIR}}/.dist`)
+
+**process-compose.yaml delegates to Taskfiles.** Process Compose only orchestrates (process dependencies and restart policies). All implementation details live in subsystem Taskfiles:
+- `command:` MUST call a task (e.g., `task <subsystem>:run`, `task <subsystem>:poll`)
+- `readiness_probe:` MUST call a task (e.g., `task <subsystem>:health`, `task <subsystem>:health:poller`)
+- **NEVER** call binaries directly (e.g., `sync/.bin/sync poll` is WRONG)
+- Task names can be anything appropriate for the operation (:run, :poll, :watch, etc.)
+
+**Idempotency everywhere.** Every task must be safe to run repeatedly:
+- Use `status:` to skip if already done
+- Use `sources:/generates:` for incremental builds
+- Use `deps:` chains so tasks auto-satisfy dependencies
+
+**One workflow for all users.** DEV builds from source, USER downloads binaries, but `task start` works for both via `ensure` task that auto-downloads if binary missing.
+
+## Directory Structure
+
+Per subsystem:
+- `.src/` - Source code
+- `.bin/` - Binaries
+- `.data/` - Runtime data
+
+## Task Naming
+
+**Semantics - clear distinction between orchestration and execution:**
+- `start` - Orchestrate all services (root level only, delegates to Process Compose)
+- `run` - Execute a pre-built binary (subsystem level)
+- `dev:run` - Rapid development with `go run` (Go subsystems only, compile+execute from source)
+- `bin:build` - Compile source to binary (`go build`)
+- `test`, `health` - Short-lived commands that return immediately
+
+**Standard tasks per subsystem:**
+- **src:** tasks - `src:clone`, `src:update`
+- **bin:** tasks - `bin:build` (compile to binary), `bin:download` (download pre-built)
+- **dev:** tasks - `dev:run` (Go subsystems: run from source with `go run`)
+- **Service tasks** - `config:version`, `deps`, `ensure`, `health`, `install`, `package`, `run`, `test`
+- **clean:** tasks - `clean`, `clean:all`, `clean:data`, `clean:src`
+
+**Subsystem variable naming:**
+**ALL variables** in subsystem Taskfiles MUST be prefixed with the subsystem name (uppercase). This prevents variable collisions when Taskfiles are included together.
+
+```yaml
+# GOOD - nats/Taskfile.yml
+vars:
+  NATS_BIN_NAME: nats-server
+  NATS_UPSTREAM_REPO: https://github.com/nats-io/nats-server.git
+  NATS_VERSION: '{{.NATS_VERSION | default "v2.10.24"}}'
+  NATS_SRC: '{{.TASKFILE_DIR}}/.src'
+  NATS_BIN: '{{.TASKFILE_DIR}}/.bin'
+  NATS_BIN_PATH: '{{.NATS_BIN}}/{{.NATS_BIN_NAME}}'
+  NATS_DATA: '{{.TASKFILE_DIR}}/.data'
+
+# BAD - variables without prefix will leak between subsystems!
+vars:
+  BIN_NAME: nats-server      # WRONG - no prefix
+  UPSTREAM_REPO: ...         # WRONG - no prefix
+  VERSION: ...               # WRONG - no prefix
+```
+
+**CRITICAL:** Task includes all subsystem Taskfiles into a single namespace. Unprefixed variables like `BIN_NAME`, `VERSION`, `UPSTREAM_REPO` will be overwritten by the last included subsystem!
+
+Standard variable pattern per subsystem:
+```yaml
+vars:
+  <PREFIX>_BIN_NAME: <binary-name>
+  <PREFIX>_UPSTREAM_REPO: <git-url>
+  <PREFIX>_VERSION: '{{.<PREFIX>_VERSION | default "<version>"}}'
+  <PREFIX>_SRC: '{{.TASKFILE_DIR}}/.src'
+  <PREFIX>_BIN: '{{.TASKFILE_DIR}}/.bin'
+  <PREFIX>_BIN_PATH: '{{.<PREFIX>_BIN}}/{{.<PREFIX>_BIN_NAME}}'
+  <PREFIX>_DATA: '{{.TASKFILE_DIR}}/.data'
+```
+
+All tasks MUST use prefixed variables:
+```yaml
+bin:download:
+  status:
+    - test -f {{.NATS_BIN_PATH}}        # NOT: test -f {{.NATS_BIN}}/nats-server
+  cmds:
+    - chmod +x {{.NATS_BIN_PATH}}       # NOT: chmod +x {{.NATS_BIN}}/nats-server
+
+package:
+  vars:
+    GOOS: '{{.GOOS | default OS}}'
+    GOARCH: '{{.GOARCH | default ARCH}}'
+    DIST: '{{.DIST | default .DIST_DIR}}'
+  cmds:
+    - tar -czvf {{.DIST}}/{{.NATS_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.NATS_BIN}} {{.NATS_BIN_NAME}}
+```
+
+**Task ordering within subsystem Taskfiles:**
+1. src: tasks (source management)
+2. bin: tasks (binary artifacts)
+3. dev: tasks (development mode)
+4. Service tasks (alphabetically sorted)
+5. clean: tasks (alphabetically sorted)
+
+**Root-level aggregator tasks** (delegate to all subsystems):
+- `src:clone` - Clone all subsystem sources (parallel via `deps:`)
+- `src:update` - Update all subsystem sources (sequential via `cmds:`)
+- `bin:build` - Build all subsystems from source (parallel via `deps:`)
+- `bin:download` - Download all pre-built binaries (parallel via `deps:`)
+- `package` - Package all binaries for release (sequential via `for:` loop with vars)
+- `test` - Run tests for all subsystems (sequential)
+- `deps` - Download dependencies for all subsystems (sequential)
+- `clean`, `clean:data`, `clean:src`, `clean:all` - Clean tasks (sequential)
+
+**CI-specific tasks (root Taskfile only):**
+- `ci:dist` - Output the DIST_DIR path for CI to query (maintains "Taskfiles are the source of truth")
+
+## Sorting Rules
+
+**Alphabetically sort everything in root files:**
+- Taskfile.yml: `includes:` section and all `deps:`/`cmds:` lists that call multiple subsystems
+- process-compose.yaml: all process definitions and all `depends_on:` lists
+
+This makes scanning and finding subsystems easy and keeps everything predictable.
+
+## Go-Specific
+
+Use `GOWORK: off` for Go builds.
+
+Set at the top level of subsystem Taskfiles:
+```yaml
+env:
+  GOWORK: off
+```
+
+**Never shell out to git binary.** Use `sync clone` and `sync pull` commands instead:
+```yaml
+# BAD - assumes git binary exists (breaks for USERs)
+src:clone:
+  cmds:
+    - git clone --branch {{.VERSION}} {{.UPSTREAM_REPO}} {{.SRC_DIR}}
+
+# GOOD - uses sync binary with go-git (works for everyone)
+src:clone:
+  cmds:
+    - sync/.bin/sync clone {{.UPSTREAM_REPO}} {{.SRC_DIR}} {{.VERSION}}
+```
+
+The sync subsystem embeds go-git, so git operations work without requiring git binary installation.
+
+## Automated Updates (sync subsystem)
+
+**INCREMENTAL updates only.** The sync subsystem monitors UPSTREAM source repositories and triggers rebuilds ONLY for subsystems whose source changed. Never rebuild everything.
+
+**Dual monitoring approach:**
+
+1. **GitHub polling** - For upstream repos we don't control (nats-io, liftbridge-io, influxdata):
+   - GitHub API polling every 5 minutes using [github.com/google/go-github/v80](https://github.com/google/go-github)
+   - Compares latest commit hash with local `.version` file
+   - Triggers update when mismatch detected
+   - Runs as `sync-poller` service in Process Compose
+
+2. **GitHub webhooks** - For repos we control (joeblew999/plat-telemetry):
+   - Event-driven using [github.com/cbrgm/githubevents/v2](https://github.com/cbrgm/githubevents)
+   - Listens on port 9090 for webhook POST requests
+   - Runs as `sync` service in Process Compose
+
+**Update workflow** - Both polling and webhooks trigger the same flow:
+- Maps repository to subsystem (nats-io/nats-server → nats)
+- Triggers `task sync:update SUBSYSTEM=<name>`
+- Hot-reloads the updated service via Process Compose API
+
+**Two update modes:**
+
+1. **DEV mode** - Monitor upstream source repos for changes:
+   - Polling detects new commits on upstream repos
+   - Or webhook fires when we push to upstream (if configured)
+   - On change → `task <subsystem>:src:update` → `task <subsystem>:bin:build` → `task reload PROC=<subsystem>`
+
+2. **USER mode** - Monitor plat-telemetry releases for new binaries:
+   - Webhook fires when we publish releases
+   - On release published → `task <subsystem>:bin:download` → `task reload PROC=<subsystem>`
+
+**Version tracking** - Each binary has a `.version` file with:
+```
+commit: <short-sha>
+timestamp: <ISO8601>
+checksum: <SHA256>
+```
+
+**Manual check** - Test version checking without webhooks:
+```bash
+task sync:check                    # Check all subsystems
+task sync:check SUBSYSTEM=nats     # Check specific subsystem
+```
+
+**Integration:**
+- sync/Taskfile.yml - Standard subsystem tasks with GOWORK=off at top level
+- sync/pkg/poller/ - GitHub API polling using go-github/v80
+- sync/pkg/webhook/ - GitHub webhook handlers using githubevents/v2
+- sync/pkg/checker/ - Version comparison logic
+- Taskfile.yml - Root tasks: sync:check, sync:update
+- process-compose.yaml - sync service (webhooks) and sync-poller service (polling)
+
+## Workflows
+
+### DEV Workflow (build from source)
+```bash
+# Clone and build all subsystems
+task src:clone
+task bin:build
+
+# Start all services
+task start:fg
+
+# Make code changes, rebuild specific subsystem
+task nats:bin:build
+
+# Hot-reload the service (in another terminal)
+task reload PROC=nats
+```
+
+### USER Workflow (download binaries)
+```bash
+# Download all pre-built binaries from latest release
+task bin:download
+
+# Start all services
+task start:fg
+
+# Download updated binary for one subsystem
+task nats:bin:download
+
+# Hot-reload the service (in another terminal)
+task reload PROC=nats
+```
+
+### Binary Hot-Reload
+When binaries change (via `bin:build` or `bin:download`), Process Compose doesn't auto-detect changes. Use `task reload PROC=<name>` to restart a service and load the new binary:
+
+```bash
+# After downloading or building a new binary
+task reload PROC=nats       # Restart NATS with new binary
+task reload PROC=telegraf   # Restart telegraf with new binary
+```
+
+This works because Process Compose maintains a Unix socket for API control (`pc/.pc.sock`) when running.

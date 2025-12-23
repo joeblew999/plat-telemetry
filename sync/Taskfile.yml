@@ -60,6 +60,12 @@ tasks:
       - chmod +x {{.SYNC_BIN_PATH}}
 
   # Service tasks
+  config:version:
+    desc: Output pinned version (uses git commit since sync is in-repo)
+    cmds:
+      - git rev-parse --short HEAD
+    silent: true
+
   deps:
     desc: Download Go dependencies
     cmds:

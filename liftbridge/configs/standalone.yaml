@@ -1,0 +1,23 @@
+---
+# Liftbridge standalone/single-node configuration
+host: 0.0.0.0
+port: 9292
+
+# Connect to NATS server
+nats.servers:
+  - nats://127.0.0.1:4222
+
+# Clustering settings for standalone mode
+clustering.server.id: liftbridge-standalone
+clustering.raft.bootstrap.seed: true
+clustering.raft.snapshot.retain: 2
+clustering.raft.snapshot.threshold: 8192
+
+# Logging
+logging.level: info
+logging.nats: false
+
+# Stream settings
+streams.retention.max.age: 604800000000000  # 7 days in nanoseconds
+streams.auto.pause.time: 0
+streams.auto.pause.disable.if.subscribers: true

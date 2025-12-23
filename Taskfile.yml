@@ -16,6 +16,7 @@ includes:
   sync: ./sync
   telegraf: ./telegraf
   test-reload: ./test-reload
+  utm: ./utm
 
 tasks:
   default:
@@ -87,6 +88,18 @@ tasks:
       - nats:bin:download
       - pc:bin:download
       - telegraf:bin:download
+
+  ensure:all:
+    desc: Ensure all binaries exist (parallel, download or build)
+    deps:
+      - arc:ensure
+      - docs:ensure
+      - gh:ensure
+      - liftbridge:ensure
+      - nats:ensure
+      - pc:ensure
+      - sync:ensure
+      - telegraf:ensure
 
   bin:verify:
     desc: Verify all binary versions exist and checksums match
@@ -364,7 +377,7 @@ tasks:
     silent: true
 
   ci:
-    desc: Main CI entry point - runs all CI tasks based on context
+    desc: Main CI entry point - runs build, test, package, release, pages
     cmds:
       - task: ci:build
       - task: ci:test
@@ -373,13 +386,14 @@ tasks:
       - task: ci:pages
 
   ci:build:
-    desc: CI build step - build all binaries
+    desc: CI build step - ensure all binaries exist
     cmds:
-      - task: bin:build
+      - task: ensure:all
       - task: bin:verify
 
   ci:test:
     desc: CI test step - run regression tests
+    deps: [ci:build]
     cmds:
       - |
         echo "▶ Starting services for testing..."
@@ -404,53 +418,23 @@ tasks:
         exit $TEST_RESULT
 
   ci:package:
-    desc: CI package step - package binaries for release (runs on tags only)
+    desc: CI package step - package binaries for release
+    deps: [ci:build]
     cmds:
-      - |
-        if [ "${GITHUB_REF:-}" = "" ] || [[ ! "${GITHUB_REF}" =~ ^refs/tags/ ]]; then
-          echo "⏭️  Skipping package - not a tag build"
-          exit 0
-        fi
-
-        echo "▶ Packaging for release..."
-        task package GOOS={{OS}} GOARCH={{ARCH}}
-
-  ci:release:
-    desc: CI release step - create GitHub release (runs on tags only, ubuntu only)
-    cmds:
-      - |
-        if [ "${GITHUB_REF:-}" = "" ] || [[ ! "${GITHUB_REF}" =~ ^refs/tags/ ]]; then
-          echo "⏭️  Skipping release - not a tag build"
-          exit 0
-        fi
-
-        if [ "{{OS}}" != "linux" ]; then
-          echo "⏭️  Skipping release - not ubuntu runner ({{OS}})"
-          exit 0
-        fi
-
-        echo "▶ Creating GitHub release..."
-        # Artifacts are uploaded by ci:package step
-        # Release creation happens via GitHub Actions
-        echo "✅ Release artifacts ready in {{.DIST_DIR}}"
+      - echo "▶ Packaging binaries for release..."
+      - task: package
 
   ci:pages:
-    desc: CI pages step - deploy docs to GitHub Pages (runs on main only, ubuntu only)
+    desc: CI pages step - build docs for GitHub Pages
     cmds:
-      - |
-        if [ "${GITHUB_REF:-}" != "refs/heads/main" ]; then
-          echo "⏭️  Skipping pages - not main branch"
-          exit 0
-        fi
+      - echo "▶ Building docs for GitHub Pages..."
+      - task: docs:build
+      - echo "✅ Docs built in docs/.dist"
 
-        if [ "{{OS}}" != "linux" ]; then
-          echo "⏭️  Skipping pages - not ubuntu runner ({{OS}})"
-          exit 0
-        fi
-
-        echo "▶ Building docs for GitHub Pages..."
-        task docs:build
-        echo "✅ Docs built in docs/.bin"
+  ci:release:
+    desc: CI release step - upload binaries to GitHub releases
+    cmds:
+      - task: release:all
 
 
 
@@ -509,6 +493,52 @@ tasks:
           GOOS: '{{.GOOS}}'
           GOARCH: '{{.GOARCH}}'
       - gh/.bin/gh release create {{.TAG}} {{.DIST_DIR}}/* --generate-notes
+
+  release:binary:
+    desc: "Release subsystem binary (usage: task release:binary SUBSYSTEM=nats)"
+    vars:
+      SUBSYSTEM: '{{.SUBSYSTEM}}'
+    preconditions:
+      - sh: test -n "{{.SUBSYSTEM}}"
+        msg: "SUBSYSTEM is required"
+    cmds:
+      - task: '{{.SUBSYSTEM}}:package'
+      - |
+        VERSION=$(task {{.SUBSYSTEM}}:config:version 2>/dev/null || echo "latest")
+        RELEASE_TAG="{{.SUBSYSTEM}}-${VERSION}"
+
+        # Create release if it doesn't exist
+        gh/.bin/gh release view "$RELEASE_TAG" --repo {{.RELEASE_REPO}} >/dev/null 2>&1 || \
+          gh/.bin/gh release create "$RELEASE_TAG" --repo {{.RELEASE_REPO}} --title "{{.SUBSYSTEM}} ${VERSION}" --notes "Binary release for {{.SUBSYSTEM}} ${VERSION}"
+
+        # Upload binary
+        gh/.bin/gh release upload "$RELEASE_TAG" --repo {{.RELEASE_REPO}} {{.DIST_DIR}}/{{.SUBSYSTEM}}*-{{OS}}-{{ARCH}}.tar.gz --clobber || \
+          gh/.bin/gh release upload "$RELEASE_TAG" --repo {{.RELEASE_REPO}} {{.DIST_DIR}}/*-{{OS}}-{{ARCH}}.tar.gz --clobber
+
+  release:all:
+    desc: Release all subsystem binaries
+    cmds:
+      - for: [arc, gh, liftbridge, nats, pc, sync, telegraf]
+        task: release:binary
+        vars:
+          SUBSYSTEM: '{{.ITEM}}'
+
+  package:bundle:
+    desc: Create platform bundle with all binaries
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+    cmds:
+      - mkdir -p {{.DIST_DIR}}/bundle
+      - |
+        # Collect all binaries into bundle
+        for subsystem in arc liftbridge nats pc sync telegraf; do
+          if [ -d "$subsystem/.bin" ]; then
+            cp $subsystem/.bin/* {{.DIST_DIR}}/bundle/ 2>/dev/null || true
+          fi
+        done
+      - tar -czvf {{.DIST_DIR}}/plat-telemetry-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.DIST_DIR}}/bundle .
+      - rm -rf {{.DIST_DIR}}/bundle
 
   reload:
     desc: "Reload a service after binary update (usage: task reload PROC=nats)"

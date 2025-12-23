@@ -1,0 +1,71 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# UTM VM definitions for plat-telemetry
+# Uses vagrant_utm provider: https://github.com/naveenrajm7/vagrant_utm
+
+Vagrant.configure("2") do |config|
+  # Default provider settings
+  config.vm.provider :utm do |utm|
+    utm.memory = 4096
+    utm.cpus = 2
+  end
+
+  # =============================================================================
+  # Linux VMs (boxes available from utm-gallery)
+  # =============================================================================
+
+  config.vm.define "ubuntu", primary: true do |vm|
+    vm.vm.box = "naveenrajm7/ubuntu-24.04-aarch64"
+    vm.vm.hostname = "ubuntu"
+    vm.vm.provider :utm do |utm|
+      utm.name = "plat-ubuntu"
+    end
+  end
+
+  config.vm.define "debian" do |vm|
+    vm.vm.box = "naveenrajm7/debian-13-aarch64"
+    vm.vm.hostname = "debian"
+    vm.vm.provider :utm do |utm|
+      utm.name = "plat-debian"
+    end
+  end
+
+  config.vm.define "alpine" do |vm|
+    vm.vm.box = "naveenrajm7/alpine-3.21-aarch64"
+    vm.vm.hostname = "alpine"
+    vm.vm.provider :utm do |utm|
+      utm.name = "plat-alpine"
+      utm.memory = 2048  # Alpine needs less RAM
+    end
+  end
+
+  # =============================================================================
+  # Windows VM (requires custom box - see README)
+  # =============================================================================
+
+  config.vm.define "windows", autostart: false do |vm|
+    vm.vm.box = "windows-11-arm64"
+    vm.vm.hostname = "windows"
+    vm.vm.communicator = "winrm"
+    vm.vm.provider :utm do |utm|
+      utm.name = "plat-windows"
+      utm.memory = 8192
+      utm.cpus = 4
+    end
+  end
+
+  # =============================================================================
+  # macOS VM (Apple Silicon only, requires custom box - see README)
+  # =============================================================================
+
+  config.vm.define "macos", autostart: false do |vm|
+    vm.vm.box = "macos-sequoia-arm64"
+    vm.vm.hostname = "macos"
+    vm.vm.provider :utm do |utm|
+      utm.name = "plat-macos"
+      utm.memory = 8192
+      utm.cpus = 4
+    end
+  end
+end

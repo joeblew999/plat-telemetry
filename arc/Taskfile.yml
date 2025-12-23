@@ -71,6 +71,12 @@ tasks:
       - go run ./cmd/arc --config {{.TASKFILE_DIR}}/arc.toml
 
   # Service tasks
+  config:version:
+    desc: Output pinned version
+    cmds:
+      - echo "{{.ARC_VERSION}}"
+    silent: true
+
   bench:
     desc: Run benchmarks
     deps: [src:clone]

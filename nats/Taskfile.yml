@@ -1,10 +1,12 @@
 version: '3'
 
 vars:
+  NATS_BIN_NAME: nats-server
   NATS_UPSTREAM_REPO: https://github.com/nats-io/nats-server.git
   NATS_VERSION: '{{.NATS_VERSION | default "v2.10.24"}}'
   NATS_SRC: '{{.TASKFILE_DIR}}/.src'
   NATS_BIN: '{{.TASKFILE_DIR}}/.bin'
+  NATS_BIN_PATH: '{{.NATS_BIN}}/{{.NATS_BIN_NAME}}'
   NATS_DATA: '{{.TASKFILE_DIR}}/.data'
   NATS_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
@@ -34,15 +36,15 @@ tasks:
     deps: [src:clone]
     dir: '{{.NATS_SRC}}'
     status:
-      - test -f {{.NATS_BIN}}/nats-server
+      - test -f {{.NATS_BIN_PATH}}
     cmds:
       - mkdir -p {{.NATS_BIN}}
-      - go build -o {{.NATS_BIN}}/nats-server .
+      - go build -o {{.NATS_BIN_PATH}} .
       - |
         {
           echo "commit: $(git -C {{.NATS_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
           echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.NATS_BIN}}/nats-server | awk '{print $1}')"
+          echo "checksum: $(shasum -a 256 {{.NATS_BIN_PATH}} | awk '{print $1}')"
         } > {{.NATS_BIN}}/.version
 
   bin:download:
@@ -54,10 +56,10 @@ tasks:
         sh: go env GOARCH
     cmds:
       - mkdir -p {{.NATS_BIN}}
-      - curl -L {{.NATS_RELEASE_URL}}/nats-server-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.NATS_BIN}}
+      - curl -L {{.NATS_RELEASE_URL}}/{{.NATS_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.NATS_BIN}}
       - echo "{{.RELEASE_VERSION}}" > {{.NATS_BIN}}/.version
     status:
-      - test -f {{.NATS_BIN}}/nats-server
+      - test -f {{.NATS_BIN_PATH}}
 
   # dev: tasks
   dev:run:
@@ -84,11 +86,11 @@ tasks:
       - test -d {{.NATS_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (build or download)
+    desc: Ensure binary exists (download from release, fallback to build)
     status:
-      - test -f {{.NATS_BIN}}/nats-server
+      - test -f {{.NATS_BIN_PATH}}
     cmds:
-      - task: bin:download
+      - task bin:download || task bin:build
 
   health:
     desc: Check if NATS is healthy
@@ -108,7 +110,7 @@ tasks:
     deps: [ensure]
     cmds:
       - mkdir -p {{.NATS_DATA}}
-      - '{{.NATS_BIN}}/nats-server --config nats.conf'
+      - '{{.NATS_BIN_PATH}} --config nats.conf'
 
   test:
     desc: Run tests
@@ -123,9 +125,8 @@ tasks:
       GOOS: '{{.GOOS | default OS}}'
       GOARCH: '{{.GOARCH | default ARCH}}'
       DIST: '{{.DIST | default .DIST_DIR}}'
-      BINARY_NAME: nats-server
     cmds:
-      - tar -czvf {{.DIST}}/{{.BINARY_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.NATS_BIN}} {{.BINARY_NAME}}
+      - tar -czvf {{.DIST}}/{{.NATS_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.NATS_BIN}} {{.NATS_BIN_NAME}}
 
   # clean: tasks
   clean:

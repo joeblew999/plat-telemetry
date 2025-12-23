@@ -61,43 +61,43 @@ processes:
       initial_delay_seconds: 2
       period_seconds: 5
 
-  sync:
-    command: task sync:run
-    working_dir: .
-    availability:
-      restart: on_failure
-      backoff_seconds: 5
-    readiness_probe:
-      exec:
-        command: task sync:health
-      initial_delay_seconds: 3
-      period_seconds: 10
+  # sync:
+  #   command: task sync:run
+  #   working_dir: .
+  #   availability:
+  #     restart: on_failure
+  #     backoff_seconds: 5
+  #   readiness_probe:
+  #     exec:
+  #       command: task sync:health
+  #     initial_delay_seconds: 3
+  #     period_seconds: 10
 
-  sync-poller:
-    command: task sync:poll
-    working_dir: .
-    environment:
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
-    availability:
-      restart: on_failure
-      backoff_seconds: 5
-    readiness_probe:
-      exec:
-        command: task sync:health:poller
-      initial_delay_seconds: 3
-      period_seconds: 30
+  # sync-poller:
+  #   command: task sync:poll
+  #   working_dir: .
+  #   environment:
+  #     - GITHUB_TOKEN=${GITHUB_TOKEN}
+  #   availability:
+  #     restart: on_failure
+  #     backoff_seconds: 5
+  #   readiness_probe:
+  #     exec:
+  #       command: task sync:health:poller
+  #     initial_delay_seconds: 3
+  #     period_seconds: 30
 
-  sync-taskfile-poller:
-    command: task sync:poll:taskfiles
-    working_dir: .
-    availability:
-      restart: on_failure
-      backoff_seconds: 5
-    readiness_probe:
-      exec:
-        command: task sync:health:poller
-      initial_delay_seconds: 3
-      period_seconds: 30
+  # sync-taskfile-poller:
+  #   command: task sync:poll:taskfiles
+  #   working_dir: .
+  #   availability:
+  #     restart: on_failure
+  #     backoff_seconds: 5
+  #   readiness_probe:
+  #     exec:
+  #       command: task sync:health:poller
+  #     initial_delay_seconds: 3
+  #     period_seconds: 30
 
   telegraf:
     command: task telegraf:run

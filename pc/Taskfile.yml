@@ -79,6 +79,12 @@ tasks:
       - go run . up -U -u {{.PC_SOCKET}} -f {{.PC_CONFIG}} -t=false
 
   # Service tasks
+  config:version:
+    desc: Output pinned version
+    cmds:
+      - echo "{{.PC_VERSION}}"
+    silent: true
+
   attach:
     desc: Attach to running Process Compose instance (requires real TTY)
     dir: '{{.ROOT_DIR}}'
@@ -96,11 +102,11 @@ tasks:
       - test -d {{.PC_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (build or download)
+    desc: Ensure binary exists (download from release, fallback to build)
     status:
       - test -f {{.PC_BIN_PATH}}
     cmds:
-      - task: bin:download
+      - task bin:download || task bin:build
 
   install:
     desc: Install process-compose binary
