@@ -81,11 +81,11 @@ tasks:
       - test -f go.sum
 
   ensure:
-    desc: Ensure binary exists (download from release, fallback to build)
+    desc: Ensure binary exists (build from source)
     status:
       - test -f {{.SYNC_BIN_PATH}}
     cmds:
-      - task bin:download || task bin:build
+      - task: bin:build
 
   health:
     desc: Check webhook server health

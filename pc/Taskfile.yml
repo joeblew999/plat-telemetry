@@ -102,11 +102,11 @@ tasks:
       - test -d {{.PC_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (download from release, fallback to build)
+    desc: Ensure binary exists (build from source)
     status:
       - test -f {{.PC_BIN_PATH}}
     cmds:
-      - task bin:download || task bin:build
+      - task: bin:build
 
   install:
     desc: Install process-compose binary

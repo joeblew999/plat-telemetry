@@ -89,11 +89,11 @@ tasks:
       - test -d {{.LB_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (download from release, fallback to build)
+    desc: Ensure binary exists (build from source)
     status:
       - test -f {{.LB_BIN_PATH}}
     cmds:
-      - task bin:download || task bin:build
+      - task: bin:build
 
   health:
     desc: Check if Liftbridge is healthy
