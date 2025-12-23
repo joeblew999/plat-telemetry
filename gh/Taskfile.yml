@@ -180,6 +180,139 @@ tasks:
 
         echo "✅ Deleted $DELETED runs"
 
+  # release management tasks
+  releases:list:
+    desc: List all releases
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - '{{.GH_BIN_PATH}} release list --repo {{.REPO}}'
+
+  releases:view:
+    desc: "View a specific release (usage: task gh:releases:view TAG=v1.0.0)"
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+      TAG: '{{.TAG}}'
+    preconditions:
+      - sh: test -n "{{.TAG}}"
+        msg: "TAG is required"
+    cmds:
+      - '{{.GH_BIN_PATH}} release view {{.TAG}} --repo {{.REPO}}'
+
+  releases:delete:
+    desc: "Delete a release (usage: task gh:releases:delete TAG=v1.0.0)"
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+      TAG: '{{.TAG}}'
+    preconditions:
+      - sh: test -n "{{.TAG}}"
+        msg: "TAG is required"
+    cmds:
+      - '{{.GH_BIN_PATH}} release delete {{.TAG}} --repo {{.REPO}} --yes --cleanup-tag'
+
+  releases:clean:
+    desc: Delete old releases (keeps last N, rate limited)
+    deps: [ensure]
+    vars:
+      KEEP: '{{.KEEP | default "10"}}'
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "▶ Fetching releases for {{.REPO}}..."
+        RELEASES=$({{.GH_BIN_PATH}} release list --repo {{.REPO}} --limit 100 --json tagName --jq '.[].tagName')
+
+        COUNT=0
+        DELETED=0
+        for TAG in $RELEASES; do
+          COUNT=$((COUNT + 1))
+          if [ $COUNT -le {{.KEEP}} ]; then
+            echo "⏭️  Keeping release $TAG (within last {{.KEEP}})"
+            continue
+          fi
+
+          echo "🗑️  Deleting release $TAG..."
+          {{.GH_BIN_PATH}} release delete "$TAG" --repo {{.REPO}} --yes --cleanup-tag || true
+          DELETED=$((DELETED + 1))
+
+          # Rate limit: sleep 1 second every 5 deletions
+          if [ $((DELETED % 5)) -eq 0 ]; then
+            echo "💤 Rate limiting (1s pause)..."
+            sleep 1
+          fi
+        done
+
+        echo "✅ Deleted $DELETED releases, kept {{.KEEP}}"
+
+  releases:clean:all:
+    desc: Delete ALL releases (use with caution)
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "⚠️  Deleting ALL releases for {{.REPO}}..."
+        RELEASES=$({{.GH_BIN_PATH}} release list --repo {{.REPO}} --limit 500 --json tagName --jq '.[].tagName')
+
+        DELETED=0
+        for TAG in $RELEASES; do
+          echo "🗑️  Deleting release $TAG..."
+          {{.GH_BIN_PATH}} release delete "$TAG" --repo {{.REPO}} --yes --cleanup-tag || true
+          DELETED=$((DELETED + 1))
+
+          # Rate limit: sleep 1 second every 5 deletions
+          if [ $((DELETED % 5)) -eq 0 ]; then
+            echo "💤 Rate limiting (1s pause)..."
+            sleep 1
+          fi
+        done
+
+        echo "✅ Deleted $DELETED releases"
+
+  # pages management tasks
+  pages:status:
+    desc: Show GitHub Pages status
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - '{{.GH_BIN_PATH}} api repos/{{.REPO}}/pages --jq ''{status: .status, url: .html_url, source: .build_type}'''
+
+  pages:enable:
+    desc: Enable GitHub Pages with Actions
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        if {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages 2>/dev/null | grep -q '"build_type":"workflow"'; then
+          echo "✅ GitHub Pages already enabled with Actions"
+        else
+          echo "▶ Enabling GitHub Pages..."
+          {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X POST -f build_type=workflow 2>/dev/null || \
+          {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X PUT -f build_type=workflow
+          echo "✅ GitHub Pages enabled"
+        fi
+
+  pages:disable:
+    desc: Disable GitHub Pages
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - '{{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X DELETE'
+      - echo "✅ GitHub Pages disabled"
+
+  pages:builds:
+    desc: List recent GitHub Pages builds
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - '{{.GH_BIN_PATH}} api repos/{{.REPO}}/pages/builds --jq ''.[] | {status: .status, created_at: .created_at, duration: .duration}'''
+
   # clean: tasks
   clean:
     desc: Clean build artifacts
