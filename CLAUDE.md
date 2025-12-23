@@ -52,12 +52,21 @@ vars:
   <PREFIX>_BIN: '{{.TASKFILE_DIR}}/.bin'
   <PREFIX>_BIN_PATH: '{{.<PREFIX>_BIN}}/{{.<PREFIX>_BIN_NAME}}'
   <PREFIX>_DATA: '{{.TASKFILE_DIR}}/.data'
+  <PREFIX>_PORT: '{{.<PREFIX>_PORT | default "<default-port>"}}'  # For services with HTTP/RPC
 ```
+
+**Port variable benefits:**
+- Enables inspection via `task <subsystem>:config:port`
+- Allows port conflict resolution
+- Supports process killing by port: `lsof -ti:{{.<PREFIX>_PORT}} | xargs kill`
+- Consistent pattern for health checks: `curl http://localhost:{{.<PREFIX>_PORT}}/health`
 
 **Root-level variables** (defined in root Taskfile.yml only):
 - `RELEASE_REPO` - GitHub repository for releases
 - `RELEASE_VERSION` - Release version tag
 - `DIST_DIR` - Directory for packaged release artifacts
+- `SUBSYSTEMS_BUILD` - Space-separated list of subsystems that build binaries
+- `SUBSYSTEMS_RELEASE` - Space-separated list of subsystems to release
 
 ### 2.2 Task Naming
 

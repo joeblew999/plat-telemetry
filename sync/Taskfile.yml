@@ -8,6 +8,7 @@ vars:
   SYNC_BIN_PATH: "{{.SYNC_BIN}}/{{.SYNC_BIN_NAME}}"
   SYNC_UPSTREAM_REPO: https://github.com/joeblew999/plat-telemetry
   SYNC_UPSTREAM_BRANCH: main
+  SYNC_PORT: '{{.SYNC_PORT | default "9090"}}'
 
 env:
   GOWORK: off
@@ -60,6 +61,12 @@ tasks:
       - chmod +x {{.SYNC_BIN_PATH}}
 
   # Service tasks
+  config:port:
+    desc: Output service port
+    cmds:
+      - echo "{{.SYNC_PORT}}"
+    silent: true
+
   config:version:
     desc: Output pinned version (uses git commit since sync is in-repo)
     cmds:
@@ -83,7 +90,7 @@ tasks:
   health:
     desc: Check webhook server health
     cmds:
-      - curl -f http://localhost:9090/health || exit 1
+      - curl -f http://localhost:{{.SYNC_PORT}}/health || exit 1
 
   health:poller:
     desc: Check poller service health (always returns success if running)
@@ -106,7 +113,7 @@ tasks:
     desc: Run webhook server
     deps: [ensure]
     env:
-      PORT: "9090"
+      PORT: "{{.SYNC_PORT}}"
     cmds:
       - "{{.SYNC_BIN_PATH}} watch"
 
