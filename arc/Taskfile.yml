@@ -1,10 +1,12 @@
 version: '3'
 
 vars:
+  ARC_BIN_NAME: arc
   ARC_UPSTREAM_REPO: https://github.com/basekick-labs/arc.git
   ARC_VERSION: '{{.ARC_VERSION | default "main"}}'
   ARC_SRC: '{{.TASKFILE_DIR}}/.src'
   ARC_BIN: '{{.TASKFILE_DIR}}/.bin'
+  ARC_BIN_PATH: '{{.ARC_BIN}}/{{.ARC_BIN_NAME}}'
   ARC_DATA: '{{.TASKFILE_DIR}}/.data'
   ARC_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
@@ -34,15 +36,15 @@ tasks:
     deps: [src:clone]
     dir: '{{.ARC_SRC}}'
     status:
-      - test -f {{.ARC_BIN}}/arc
+      - test -f {{.ARC_BIN_PATH}}
     cmds:
       - mkdir -p {{.ARC_BIN}}
-      - go build -o {{.ARC_BIN}}/arc ./cmd/arc
+      - go build -o {{.ARC_BIN_PATH}} ./cmd/arc
       - |
         {
           echo "commit: $(git -C {{.ARC_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
           echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.ARC_BIN}}/arc | awk '{print $1}')"
+          echo "checksum: $(shasum -a 256 {{.ARC_BIN_PATH}} | awk '{print $1}')"
         } > {{.ARC_BIN}}/.version
 
   bin:download:
@@ -54,10 +56,10 @@ tasks:
         sh: go env GOARCH
     cmds:
       - mkdir -p {{.ARC_BIN}}
-      - curl -L {{.ARC_RELEASE_URL}}/arc-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.ARC_BIN}}
+      - curl -L {{.ARC_RELEASE_URL}}/{{.ARC_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.ARC_BIN}}
       - echo "{{.RELEASE_VERSION}}" > {{.ARC_BIN}}/.version
     status:
-      - test -f {{.ARC_BIN}}/arc
+      - test -f {{.ARC_BIN_PATH}}
 
   # dev: tasks
   dev:run:
@@ -86,11 +88,11 @@ tasks:
       - test -d {{.ARC_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (build or download)
+    desc: Ensure binary exists (download from release, fallback to build)
     status:
-      - test -f {{.ARC_BIN}}/arc
+      - test -f {{.ARC_BIN_PATH}}
     cmds:
-      - task: bin:download
+      - task bin:download || task bin:build
 
   health:
     desc: Check if Arc is healthy
@@ -110,7 +112,7 @@ tasks:
     deps: [ensure]
     cmds:
       - mkdir -p {{.ARC_DATA}}
-      - '{{.ARC_BIN}}/arc --config arc.toml'
+      - '{{.ARC_BIN_PATH}} --config arc.toml'
 
   test:
     desc: Run tests
@@ -125,9 +127,8 @@ tasks:
       GOOS: '{{.GOOS | default OS}}'
       GOARCH: '{{.GOARCH | default ARCH}}'
       DIST: '{{.DIST | default .DIST_DIR}}'
-      BINARY_NAME: arc
     cmds:
-      - tar -czvf {{.DIST}}/{{.BINARY_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.ARC_BIN}} {{.BINARY_NAME}}
+      - tar -czvf {{.DIST}}/{{.ARC_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.ARC_BIN}} {{.ARC_BIN_NAME}}
 
   # clean: tasks
   clean:

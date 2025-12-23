@@ -1,13 +1,13 @@
 version: '3'
 
 vars:
-  BIN_NAME: sync
+  SYNC_BIN_NAME: sync
   SYNC_SRC: '{{.TASKFILE_DIR}}/.src'
   SYNC_BIN: '{{.TASKFILE_DIR}}/.bin'
   SYNC_DATA: '{{.TASKFILE_DIR}}/.data'
-  BIN_PATH: "{{.SYNC_BIN}}/{{.BIN_NAME}}"
-  UPSTREAM_REPO: https://github.com/joeblew999/plat-telemetry
-  UPSTREAM_BRANCH: main
+  SYNC_BIN_PATH: "{{.SYNC_BIN}}/{{.SYNC_BIN_NAME}}"
+  SYNC_UPSTREAM_REPO: https://github.com/joeblew999/plat-telemetry
+  SYNC_UPSTREAM_BRANCH: main
 
 env:
   GOWORK: off
@@ -24,7 +24,7 @@ tasks:
   src:update:
     desc: Update sync source
     cmds:
-      - git pull origin {{.UPSTREAM_BRANCH}}
+      - git pull origin {{.SYNC_UPSTREAM_BRANCH}}
 
   # bin: tasks
   bin:build:
@@ -35,15 +35,15 @@ tasks:
       - go.mod
       - go.sum
     generates:
-      - "{{.BIN_PATH}}"
+      - "{{.SYNC_BIN_PATH}}"
       - "{{.SYNC_BIN}}/.version"
     cmds:
       - mkdir -p {{.SYNC_BIN}}
-      - go build -o {{.BIN_PATH}} .
+      - go build -o {{.SYNC_BIN_PATH}} .
       - |
         echo "commit: $(git rev-parse --short HEAD)" > {{.SYNC_BIN}}/.version
         echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> {{.SYNC_BIN}}/.version
-        echo "checksum: $(shasum -a 256 {{.BIN_PATH}} | awk '{print $1}')" >> {{.SYNC_BIN}}/.version
+        echo "checksum: $(shasum -a 256 {{.SYNC_BIN_PATH}} | awk '{print $1}')" >> {{.SYNC_BIN}}/.version
 
   bin:download:
     desc: Download pre-built sync binary (USER)
@@ -55,9 +55,9 @@ tasks:
       - |
         gh release download {{.RELEASE_VERSION}} \
           --repo {{.RELEASE_REPO}} \
-          --pattern "sync-{{OS}}-{{ARCH}}.tar.gz" \
+          --pattern "{{.SYNC_BIN_NAME}}-{{OS}}-{{ARCH}}.tar.gz" \
           --output - | tar xz -C {{.SYNC_BIN}}
-      - chmod +x {{.BIN_PATH}}
+      - chmod +x {{.SYNC_BIN_PATH}}
 
   # Service tasks
   deps:
@@ -68,16 +68,11 @@ tasks:
       - test -f go.sum
 
   ensure:
-    desc: Ensure binary exists
-    cmds:
-      - |
-        if [ -f go.mod ]; then
-          task bin:build
-        else
-          task bin:download
-        fi
+    desc: Ensure binary exists (download from release, fallback to build)
     status:
-      - test -f {{.BIN_PATH}}
+      - test -f {{.SYNC_BIN_PATH}}
+    cmds:
+      - task bin:download || task bin:build
 
   health:
     desc: Check webhook server health
@@ -93,13 +88,13 @@ tasks:
     desc: Run polling service for upstream repos
     deps: [ensure]
     cmds:
-      - "{{.BIN_PATH}} poll"
+      - "{{.SYNC_BIN_PATH}} poll"
 
   poll:taskfiles:
     desc: Run Taskfile polling service for version changes
     deps: [ensure]
     cmds:
-      - "{{.BIN_PATH}} poll-taskfiles"
+      - "{{.SYNC_BIN_PATH}} poll-taskfiles"
 
   run:
     desc: Run webhook server
@@ -107,7 +102,7 @@ tasks:
     env:
       PORT: "9090"
     cmds:
-      - "{{.BIN_PATH}} watch"
+      - "{{.SYNC_BIN_PATH}} watch"
 
   test:
     desc: Run unit tests
@@ -120,7 +115,7 @@ tasks:
       DIST_DIR: '{{.DIST_DIR | default "../.dist"}}'
     cmds:
       - mkdir -p {{.DIST_DIR}}
-      - tar czf {{.DIST_DIR}}/sync-{{OS}}-{{ARCH}}.tar.gz -C {{.SYNC_BIN}} {{.BIN_NAME}} .version
+      - tar czf {{.DIST_DIR}}/{{.SYNC_BIN_NAME}}-{{OS}}-{{ARCH}}.tar.gz -C {{.SYNC_BIN}} {{.SYNC_BIN_NAME}} .version
 
   # clean: tasks
   clean:

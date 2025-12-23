@@ -61,7 +61,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/.bin
+          path: docs/.dist
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
