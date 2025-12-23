@@ -1,0 +1,173 @@
+version: '3'
+
+vars:
+  DOCS_BIN_NAME: hugo
+  DOCS_UPSTREAM_REPO: https://github.com/gohugoio/hugo.git
+  DOCS_VERSION: '{{.DOCS_VERSION | default "v0.140.2"}}'
+  DOCS_SRC: '{{.TASKFILE_DIR}}/.src'
+  DOCS_BIN: '{{.TASKFILE_DIR}}/.bin'
+  DOCS_BIN_PATH: '{{.DOCS_BIN}}/{{.DOCS_BIN_NAME}}'
+  DOCS_CONTENT: '{{.TASKFILE_DIR}}'
+  DOCS_DIST: '{{.TASKFILE_DIR}}/.dist'
+  DOCS_DATA: '{{.TASKFILE_DIR}}/.data'
+  DOCS_PORT: '{{.DOCS_PORT | default "1313"}}'
+  DOCS_HEALTH_PATH: '{{.DOCS_HEALTH_PATH | default "/plat-telemetry/"}}'
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks
+  src:clone:
+    desc: Clone Hugo upstream repository at pinned version
+    cmds:
+      - git clone --branch {{.DOCS_VERSION}} --depth 1 {{.DOCS_UPSTREAM_REPO}} {{.DOCS_SRC}}
+    status:
+      - test -d {{.DOCS_SRC}}
+
+  src:update:
+    desc: Fetch and checkout pinned version
+    deps: [src:clone]
+    dir: '{{.DOCS_SRC}}'
+    cmds:
+      - git fetch --tags
+      - git checkout {{.DOCS_VERSION}}
+
+  # bin: tasks
+  bin:build:
+    desc: Build Hugo binary from source
+    deps: [src:clone]
+    dir: '{{.DOCS_SRC}}'
+    status:
+      - test -f {{.DOCS_BIN_PATH}}
+    cmds:
+      - mkdir -p {{.DOCS_BIN}}
+      - go build -tags extended -o {{.DOCS_BIN_PATH}} .
+      - |
+        {
+          echo "version: {{.DOCS_VERSION}}"
+          echo "commit: $(git -C {{.DOCS_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.DOCS_BIN_PATH}} | awk '{print $1}')"
+        } > {{.DOCS_BIN}}/.version
+
+  bin:download:
+    desc: Download pre-built Hugo binary from GitHub releases
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+      VERSION_NUM: '{{trimPrefix "v" .DOCS_VERSION}}'
+    status:
+      - test -f {{.DOCS_BIN_PATH}}
+    cmds:
+      - mkdir -p {{.DOCS_BIN}}
+      - |
+        if [ "{{.GOOS}}" = "darwin" ]; then
+          ARCHIVE="hugo_extended_{{.VERSION_NUM}}_{{.GOOS}}-universal.tar.gz"
+        else
+          ARCHIVE="hugo_extended_{{.VERSION_NUM}}_{{.GOOS}}-{{.GOARCH}}.tar.gz"
+        fi
+        curl -L "https://github.com/gohugoio/hugo/releases/download/{{.DOCS_VERSION}}/$ARCHIVE" | tar xz -C {{.DOCS_BIN}} {{.DOCS_BIN_NAME}}
+      - |
+        {
+          echo "version: {{.DOCS_VERSION}}"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.DOCS_BIN_PATH}} | awk '{print $1}')"
+        } > {{.DOCS_BIN}}/.version
+
+  # Service tasks
+  deps:
+    desc: No dependencies for Hugo docs
+    cmds:
+      - echo "Hugo docs have no dependencies"
+
+  ensure:
+    desc: Ensure Hugo binary exists (download if missing)
+    status:
+      - test -f {{.DOCS_BIN_PATH}}
+    cmds:
+      - task: bin:download
+
+  health:
+    desc: Check if Hugo server is healthy
+    cmds:
+      - curl -sf http://localhost:{{.DOCS_PORT}}{{.DOCS_HEALTH_PATH}} > /dev/null
+
+  "new":
+    desc: "Create new content (usage: task docs:new PAGE=architecture/new-page)"
+    vars:
+      PAGE: '{{.PAGE | default "posts/new-post"}}'
+    deps: [ensure]
+    cmds:
+      - cd {{.DOCS_CONTENT}} && {{.DOCS_BIN_PATH}} new content/{{.PAGE}}.md
+
+  run:
+    desc: Run Hugo dev server (long-running service with hot reload)
+    deps: [ensure]
+    cmds:
+      - '{{.DOCS_BIN_PATH}} server -D --bind 0.0.0.0 --port {{.DOCS_PORT}} -s {{.DOCS_CONTENT}}'
+
+  build:
+    desc: Build Hugo static site
+    deps: [ensure, taskfiles:copy]
+    cmds:
+      - '{{.DOCS_BIN_PATH}} --minify -s {{.DOCS_CONTENT}} -d {{.DOCS_DIST}}'
+
+  taskfiles:copy:
+    desc: Copy subsystem Taskfiles to static for remote include
+    vars:
+      STATIC_TASKFILES: '{{.DOCS_CONTENT}}/static/taskfiles'
+    cmds:
+      - mkdir -p {{.STATIC_TASKFILES}}
+      - |
+        for subsystem in arc docs gh grafana liftbridge nats pc service sync telegraf utm; do
+          mkdir -p {{.STATIC_TASKFILES}}/$subsystem
+          cp {{.ROOT_DIR}}/$subsystem/Taskfile.yml {{.STATIC_TASKFILES}}/$subsystem/
+        done
+      - echo "Taskfiles copied to {{.STATIC_TASKFILES}}"
+    sources:
+      - '{{.ROOT_DIR}}/*/Taskfile.yml'
+    generates:
+      - '{{.STATIC_TASKFILES}}/*/Taskfile.yml'
+
+  test:
+    desc: Check Hugo build works
+    deps: [ensure]
+    cmds:
+      - '{{.DOCS_BIN_PATH}} --minify -s {{.DOCS_CONTENT}} -d {{.DOCS_DIST}}'
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts (site output)
+    cmds:
+      - rm -rf {{.DOCS_DIST}}
+    status:
+      - '! test -d {{.DOCS_DIST}}'
+
+  clean:bin:
+    desc: Clean Hugo binary
+    cmds:
+      - rm -rf {{.DOCS_BIN}}
+    status:
+      - '! test -d {{.DOCS_BIN}}'
+
+  clean:src:
+    desc: Clean Hugo source
+    cmds:
+      - rm -rf {{.DOCS_SRC}}
+    status:
+      - '! test -d {{.DOCS_SRC}}'
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.DOCS_DATA}}
+    status:
+      - '! test -d {{.DOCS_DATA}}'
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .dist, .data)
+    cmds:
+      - rm -rf {{.DOCS_SRC}} {{.DOCS_BIN}} {{.DOCS_DIST}} {{.DOCS_DATA}} {{.DOCS_CONTENT}}/.hugo_build.lock

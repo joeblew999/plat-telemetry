@@ -1,0 +1,181 @@
+version: '3'
+
+vars:
+  TG_BIN_NAME: telegraf
+  TG_UPSTREAM_REPO: https://github.com/Basekick-Labs/telegraf.git
+  TG_VERSION: '{{.TG_VERSION | default "master"}}'
+  TG_SRC: '{{.TASKFILE_DIR}}/.src'
+  TG_BIN: '{{.TASKFILE_DIR}}/.bin'
+  TG_BIN_PATH: '{{.TG_BIN}}/{{.TG_BIN_NAME}}'
+  TG_DATA: '{{.TASKFILE_DIR}}/.data'
+  TG_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks
+  src:clone:
+    desc: Clone the upstream repository at pinned version
+    cmds:
+      - git clone --branch {{.TG_VERSION}} --depth 1 {{.TG_UPSTREAM_REPO}} {{.TG_SRC}}
+    status:
+      - test -d {{.TG_SRC}}
+
+  src:update:
+    desc: Fetch and checkout pinned version
+    deps: [src:clone]
+    dir: '{{.TG_SRC}}'
+    cmds:
+      - git fetch origin {{.TG_VERSION}}
+      - git checkout {{.TG_VERSION}}
+
+  # bin: tasks
+  bin:build:
+    desc: Build telegraf binary
+    deps: [src:clone]
+    dir: '{{.TG_SRC}}'
+    status:
+      - test -f {{.TG_BIN_PATH}}
+    cmds:
+      - mkdir -p {{.TG_BIN}}
+      - make build
+      - cp {{.TG_BIN_NAME}} {{.TG_BIN}}/
+      - |
+        {
+          echo "commit: $(git -C {{.TG_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.TG_BIN_PATH}} | awk '{print $1}')"
+        } > {{.TG_BIN}}/.version
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.TG_BIN}}
+      - curl -L {{.TG_RELEASE_URL}}/{{.TG_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.TG_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.TG_BIN}}/.version
+    status:
+      - test -f {{.TG_BIN_PATH}}
+
+  # dev: tasks
+  dev:run:
+    desc: Run telegraf from source (development mode)
+    deps: [src:clone]
+    dir: '{{.TG_SRC}}'
+    cmds:
+      - mkdir -p {{.TG_DATA}}
+      - go run ./cmd/telegraf --config {{.TASKFILE_DIR}}/telegraf.conf
+
+  # Service tasks
+  config:version:
+    desc: Output the pinned version (for sync poller)
+    cmds:
+      - echo "{{.TG_VERSION}}"
+    silent: true
+
+  config:
+    desc: Generate sample config
+    preconditions:
+      - test -f {{.TG_BIN_PATH}}
+    cmds:
+      - '{{.TG_BIN_PATH}} config > telegraf.sample.conf'
+
+  deps:
+    desc: Download dependencies
+    deps: [src:clone]
+    dir: '{{.TG_SRC}}'
+    cmds:
+      - go mod download
+    status:
+      - test -d {{.TG_SRC}}/vendor || go list -m all >/dev/null 2>&1
+
+  ensure:
+    desc: Ensure binary exists (build from source)
+    status:
+      - test -f {{.TG_BIN_PATH}}
+    cmds:
+      - task: bin:build
+
+  health:
+    desc: Check if Telegraf is healthy
+    cmds:
+      - pgrep -f "{{.TG_BIN_NAME}} --config" > /dev/null
+
+  install:
+    desc: Install telegraf binary
+    deps: [src:clone]
+    dir: '{{.TG_SRC}}'
+    cmds:
+      - make install
+
+  plugins:
+    desc: List available plugins
+    preconditions:
+      - test -f {{.TG_BIN_PATH}}
+    cmds:
+      - '{{.TG_BIN_PATH}} --input-list'
+      - '{{.TG_BIN_PATH}} --output-list'
+
+  run:
+    desc: Run telegraf binary
+    dir: '{{.TASKFILE_DIR}}'
+    deps: [ensure]
+    cmds:
+      - mkdir -p {{.TG_DATA}}
+      - '{{.TG_BIN_PATH}} --config telegraf.conf'
+
+  test:
+    desc: Run tests
+    deps: [src:clone]
+    dir: '{{.TG_SRC}}'
+    cmds:
+      - make test
+
+  test:short:
+    desc: Run short tests
+    deps: [src:clone]
+    dir: '{{.TG_SRC}}'
+    cmds:
+      - go test -short ./...
+
+  package:
+    desc: Package binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+    cmds:
+      - tar -czvf {{.DIST}}/{{.TG_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.TG_BIN}} {{.TG_BIN_NAME}}
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.TG_BIN}}
+      - rm -f telegraf.sample.conf
+    status:
+      - '! test -d {{.TG_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.TG_SRC}} {{.TG_BIN}} {{.TG_DATA}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.TG_DATA}}
+    status:
+      - '! test -d {{.TG_DATA}}'
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.TG_SRC}}
+    status:
+      - '! test -d {{.TG_SRC}}'

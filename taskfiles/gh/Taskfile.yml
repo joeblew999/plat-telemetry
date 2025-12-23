@@ -1,0 +1,399 @@
+version: '3'
+
+vars:
+  GH_BIN_NAME: gh
+  GH_UPSTREAM_REPO: https://github.com/cli/cli.git
+  GH_VERSION: '{{.GH_VERSION | default "v2.83.2"}}'
+  GH_SRC: '{{.TASKFILE_DIR}}/.src'
+  GH_BIN: '{{.TASKFILE_DIR}}/.bin'
+  GH_BIN_PATH: '{{.GH_BIN}}/{{.GH_BIN_NAME}}'
+  GH_DATA: '{{.TASKFILE_DIR}}/.data'
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks
+  src:clone:
+    desc: Clone the upstream repository at pinned version
+    cmds:
+      - git clone --branch {{.GH_VERSION}} --depth 1 {{.GH_UPSTREAM_REPO}} {{.GH_SRC}}
+    status:
+      - test -d {{.GH_SRC}}
+
+  src:update:
+    desc: Fetch and checkout pinned version
+    deps: [src:clone]
+    dir: '{{.GH_SRC}}'
+    cmds:
+      - git fetch --tags
+      - git checkout {{.GH_VERSION}}
+
+  # bin: tasks
+  bin:build:
+    desc: Build gh binary
+    deps: [src:clone]
+    dir: '{{.GH_SRC}}'
+    status:
+      - test -f {{.GH_BIN_PATH}}
+    cmds:
+      - mkdir -p {{.GH_BIN}}
+      - go build -o {{.GH_BIN_PATH}} ./cmd/gh
+      - |
+        {
+          echo "commit: $(git -C {{.GH_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.GH_BIN_PATH}} | awk '{print $1}')"
+        } > {{.GH_BIN}}/.version
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.GH_BIN}}
+      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/{{.GH_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GH_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.GH_BIN}}/.version
+    status:
+      - test -f {{.GH_BIN_PATH}}
+
+  # dev: tasks
+  dev:run:
+    desc: Run gh from source (development mode)
+    deps: [src:clone]
+    dir: '{{.GH_SRC}}'
+    cmds:
+      - mkdir -p {{.GH_DATA}}
+      - go run ./cmd/gh {{.CLI_ARGS}}
+
+  # Service tasks
+  config:version:
+    desc: Output pinned version
+    cmds:
+      - echo "{{.GH_VERSION}}"
+    silent: true
+
+  deps:
+    desc: Download dependencies
+    deps: [src:clone]
+    dir: '{{.GH_SRC}}'
+    cmds:
+      - go mod download
+    status:
+      - test -d {{.GH_SRC}}/vendor || go list -m all >/dev/null 2>&1
+
+  ensure:
+    desc: Ensure binary exists (build from source)
+    status:
+      - test -f {{.GH_BIN_PATH}}
+    cmds:
+      - task: bin:build
+
+  install:
+    desc: Install gh binary
+    deps: [src:clone]
+    dir: '{{.GH_SRC}}'
+    cmds:
+      - go install ./cmd/gh
+
+  test:
+    desc: Run tests
+    deps: [src:clone]
+    dir: '{{.GH_SRC}}'
+    cmds:
+      - go test -v ./...
+
+  package:
+    desc: Package binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+    cmds:
+      - tar -czvf {{.DIST}}/{{.GH_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.GH_BIN}} {{.GH_BIN_NAME}}
+
+  # workflow tasks
+  runs:list:
+    desc: List recent workflow runs
+    deps: [ensure]
+    cmds:
+      - '{{.GH_BIN_PATH}} run list --repo {{.RELEASE_REPO}} --limit 20'
+
+  runs:clean:
+    desc: Delete old workflow runs (keeps last 10, rate limited)
+    deps: [ensure]
+    vars:
+      KEEP: '{{.KEEP | default "10"}}'
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "▶ Fetching workflow runs for {{.REPO}}..."
+        RUNS=$({{.GH_BIN_PATH}} run list --repo {{.REPO}} --limit 100 --json databaseId,status,conclusion,createdAt --jq '.[].databaseId')
+
+        COUNT=0
+        DELETED=0
+        for RUN_ID in $RUNS; do
+          COUNT=$((COUNT + 1))
+          if [ $COUNT -le {{.KEEP}} ]; then
+            echo "⏭️  Keeping run $RUN_ID (within last {{.KEEP}})"
+            continue
+          fi
+
+          echo "🗑️  Deleting run $RUN_ID..."
+          {{.GH_BIN_PATH}} run delete $RUN_ID --repo {{.REPO}} || true
+          DELETED=$((DELETED + 1))
+
+          # Rate limit: sleep 1 second every 5 deletions
+          if [ $((DELETED % 5)) -eq 0 ]; then
+            echo "💤 Rate limiting (1s pause)..."
+            sleep 1
+          fi
+        done
+
+        echo "✅ Deleted $DELETED runs, kept {{.KEEP}}"
+
+  runs:clean:all:
+    desc: Delete ALL workflow runs (use with caution)
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "⚠️  Deleting ALL workflow runs for {{.REPO}}..."
+        RUNS=$({{.GH_BIN_PATH}} run list --repo {{.REPO}} --limit 500 --json databaseId --jq '.[].databaseId')
+
+        DELETED=0
+        for RUN_ID in $RUNS; do
+          echo "🗑️  Deleting run $RUN_ID..."
+          {{.GH_BIN_PATH}} run delete $RUN_ID --repo {{.REPO}} || true
+          DELETED=$((DELETED + 1))
+
+          # Rate limit: sleep 1 second every 5 deletions
+          if [ $((DELETED % 5)) -eq 0 ]; then
+            echo "💤 Rate limiting (1s pause)..."
+            sleep 1
+          fi
+        done
+
+        echo "✅ Deleted $DELETED runs"
+
+  # release management tasks
+  releases:list:
+    desc: List all releases
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - '{{.GH_BIN_PATH}} release list --repo {{.REPO}}'
+
+  releases:view:
+    desc: "View a specific release (usage: task gh:releases:view TAG=v1.0.0)"
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+      TAG: '{{.TAG}}'
+    preconditions:
+      - sh: test -n "{{.TAG}}"
+        msg: "TAG is required"
+    cmds:
+      - '{{.GH_BIN_PATH}} release view {{.TAG}} --repo {{.REPO}}'
+
+  releases:delete:
+    desc: "Delete a release (usage: task gh:releases:delete TAG=v1.0.0)"
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+      TAG: '{{.TAG}}'
+    preconditions:
+      - sh: test -n "{{.TAG}}"
+        msg: "TAG is required"
+    cmds:
+      - '{{.GH_BIN_PATH}} release delete {{.TAG}} --repo {{.REPO}} --yes --cleanup-tag'
+
+  releases:clean:
+    desc: Delete old releases (keeps last N, rate limited)
+    deps: [ensure]
+    vars:
+      KEEP: '{{.KEEP | default "10"}}'
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "▶ Fetching releases for {{.REPO}}..."
+        RELEASES=$({{.GH_BIN_PATH}} release list --repo {{.REPO}} --limit 100 --json tagName --jq '.[].tagName')
+
+        COUNT=0
+        DELETED=0
+        for TAG in $RELEASES; do
+          COUNT=$((COUNT + 1))
+          if [ $COUNT -le {{.KEEP}} ]; then
+            echo "⏭️  Keeping release $TAG (within last {{.KEEP}})"
+            continue
+          fi
+
+          echo "🗑️  Deleting release $TAG..."
+          {{.GH_BIN_PATH}} release delete "$TAG" --repo {{.REPO}} --yes --cleanup-tag || true
+          DELETED=$((DELETED + 1))
+
+          # Rate limit: sleep 1 second every 5 deletions
+          if [ $((DELETED % 5)) -eq 0 ]; then
+            echo "💤 Rate limiting (1s pause)..."
+            sleep 1
+          fi
+        done
+
+        echo "✅ Deleted $DELETED releases, kept {{.KEEP}}"
+
+  releases:clean:all:
+    desc: Delete ALL releases (use with caution)
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "⚠️  Deleting ALL releases for {{.REPO}}..."
+        RELEASES=$({{.GH_BIN_PATH}} release list --repo {{.REPO}} --limit 500 --json tagName --jq '.[].tagName')
+
+        DELETED=0
+        for TAG in $RELEASES; do
+          echo "🗑️  Deleting release $TAG..."
+          {{.GH_BIN_PATH}} release delete "$TAG" --repo {{.REPO}} --yes --cleanup-tag || true
+          DELETED=$((DELETED + 1))
+
+          # Rate limit: sleep 1 second every 5 deletions
+          if [ $((DELETED % 5)) -eq 0 ]; then
+            echo "💤 Rate limiting (1s pause)..."
+            sleep 1
+          fi
+        done
+
+        echo "✅ Deleted $DELETED releases"
+
+  # pages management tasks
+  pages:status:
+    desc: Show GitHub Pages status
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - '{{.GH_BIN_PATH}} api repos/{{.REPO}}/pages --jq ''{build_type: .build_type, branch: .source.branch, url: .html_url}'''
+
+  pages:enable:
+    desc: Enable GitHub Pages with Actions
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        if {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages 2>/dev/null | grep -q '"build_type":"workflow"'; then
+          echo "✅ GitHub Pages already enabled with Actions"
+        else
+          echo "▶ Enabling GitHub Pages..."
+          {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X POST -f build_type=workflow 2>/dev/null || \
+          {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X PUT -f build_type=workflow
+          echo "✅ GitHub Pages enabled"
+        fi
+
+  pages:disable:
+    desc: Disable GitHub Pages
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - '{{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X DELETE'
+      - echo "✅ GitHub Pages disabled"
+
+  pages:builds:
+    desc: List recent GitHub Pages builds
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - '{{.GH_BIN_PATH}} api repos/{{.REPO}}/pages/builds --jq ''.[] | {status: .status, created_at: .created_at, duration: .duration}'''
+
+  pages:deploy:
+    desc: Deploy docs to gh-pages branch (alternative to Actions)
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+      DIST: '{{.DIST | default "docs/.dist"}}'
+    cmds:
+      - |
+        set -e
+        echo "▶ Deploying to gh-pages branch..."
+
+        # Create temp dir for deployment
+        DEPLOY_DIR=$(mktemp -d)
+        trap "rm -rf $DEPLOY_DIR" EXIT
+
+        # Copy built docs
+        cp -r {{.DIST}}/* $DEPLOY_DIR/
+
+        # Initialize git repo
+        cd $DEPLOY_DIR
+        git init
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+
+        # Add and commit
+        git add -A
+        git commit -m "Deploy docs $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+        # Force push to gh-pages
+        git push -f https://github.com/{{.REPO}}.git HEAD:gh-pages
+
+        echo "✅ Deployed to gh-pages branch"
+
+  pages:setup:branch:
+    desc: Configure Pages to deploy from gh-pages branch
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "▶ Configuring Pages to use gh-pages branch..."
+        {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X PUT \
+          -f build_type=legacy \
+          -f 'source[branch]=gh-pages' \
+          -f 'source[path]=/'
+        echo "✅ Pages configured to deploy from gh-pages branch"
+
+  pages:setup:workflow:
+    desc: Configure Pages to deploy from Actions workflow
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "▶ Configuring Pages to use Actions workflow..."
+        {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X PUT -f build_type=workflow
+        echo "✅ Pages configured to deploy from Actions workflow"
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.GH_BIN}}
+    status:
+      - '! test -d {{.GH_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.GH_SRC}} {{.GH_BIN}} {{.GH_DATA}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.GH_DATA}}
+    status:
+      - '! test -d {{.GH_DATA}}'
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.GH_SRC}}
+    status:
+      - '! test -d {{.GH_SRC}}'

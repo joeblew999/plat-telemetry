@@ -1,0 +1,156 @@
+version: '3'
+
+vars:
+  NATS_BIN_NAME: nats-server
+  NATS_UPSTREAM_REPO: https://github.com/nats-io/nats-server.git
+  NATS_VERSION: '{{.NATS_VERSION | default "v2.10.24"}}'
+  NATS_SRC: '{{.TASKFILE_DIR}}/.src'
+  NATS_BIN: '{{.TASKFILE_DIR}}/.bin'
+  NATS_BIN_PATH: '{{.NATS_BIN}}/{{.NATS_BIN_NAME}}'
+  NATS_DATA: '{{.TASKFILE_DIR}}/.data'
+  NATS_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks
+  src:clone:
+    desc: Clone the upstream repository at pinned version
+    cmds:
+      - git clone --branch {{.NATS_VERSION}} --depth 1 {{.NATS_UPSTREAM_REPO}} {{.NATS_SRC}}
+    status:
+      - test -d {{.NATS_SRC}}
+
+  src:update:
+    desc: Fetch and checkout pinned version
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    cmds:
+      - git fetch --tags
+      - git checkout {{.NATS_VERSION}}
+
+  # bin: tasks
+  bin:build:
+    desc: Build nats-server binary
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    status:
+      - test -f {{.NATS_BIN_PATH}}
+    cmds:
+      - mkdir -p {{.NATS_BIN}}
+      - go build -o {{.NATS_BIN_PATH}} .
+      - |
+        {
+          echo "commit: $(git -C {{.NATS_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.NATS_BIN_PATH}} | awk '{print $1}')"
+        } > {{.NATS_BIN}}/.version
+
+  bin:download:
+    desc: Download pre-built binary from release
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.NATS_BIN}}
+      - curl -L {{.NATS_RELEASE_URL}}/{{.NATS_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.NATS_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.NATS_BIN}}/.version
+    status:
+      - test -f {{.NATS_BIN_PATH}}
+
+  # dev: tasks
+  dev:run:
+    desc: Run nats-server from source (development mode)
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    cmds:
+      - mkdir -p {{.NATS_DATA}}
+      - go run . --config {{.TASKFILE_DIR}}/nats.conf
+
+  # Service tasks
+  config:version:
+    desc: Output the pinned version (for sync poller)
+    cmds:
+      - echo "{{.NATS_VERSION}}"
+    silent: true
+  deps:
+    desc: Download dependencies
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    cmds:
+      - go mod download
+    status:
+      - test -d {{.NATS_SRC}}/vendor || go list -m all >/dev/null 2>&1
+
+  ensure:
+    desc: Ensure binary exists (build from source)
+    status:
+      - test -f {{.NATS_BIN_PATH}}
+    cmds:
+      - task: bin:build
+
+  health:
+    desc: Check if NATS is healthy
+    cmds:
+      - curl -sf http://localhost:8222/healthz > /dev/null
+
+  install:
+    desc: Install nats-server binary
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    cmds:
+      - go install .
+
+  run:
+    desc: Run nats-server binary
+    dir: '{{.TASKFILE_DIR}}'
+    deps: [ensure]
+    cmds:
+      - mkdir -p {{.NATS_DATA}}
+      - '{{.NATS_BIN_PATH}} --config nats.conf'
+
+  test:
+    desc: Run tests
+    deps: [src:clone]
+    dir: '{{.NATS_SRC}}'
+    cmds:
+      - go test -v ./...
+
+  package:
+    desc: Package binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+    cmds:
+      - tar -czvf {{.DIST}}/{{.NATS_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.NATS_BIN}} {{.NATS_BIN_NAME}}
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.NATS_BIN}}
+    status:
+      - '! test -d {{.NATS_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.src, .bin, .data)
+    cmds:
+      - rm -rf {{.NATS_SRC}} {{.NATS_BIN}} {{.NATS_DATA}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.NATS_DATA}}
+    status:
+      - '! test -d {{.NATS_DATA}}'
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.NATS_SRC}}
+    status:
+      - '! test -d {{.NATS_SRC}}'

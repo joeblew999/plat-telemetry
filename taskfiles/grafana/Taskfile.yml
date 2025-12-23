@@ -1,0 +1,126 @@
+version: '3'
+
+vars:
+  GF_BIN_NAME: grafana-server
+  GF_VERSION: '11.4.0'
+  GF_DOWNLOAD_URL: 'https://dl.grafana.com/oss/release/grafana-{{.GF_VERSION}}.darwin-arm64.tar.gz'
+  GF_BIN: '{{.TASKFILE_DIR}}/.bin'
+  GF_BIN_PATH: '{{.GF_BIN}}/bin/{{.GF_BIN_NAME}}'
+  GF_DATA: '{{.TASKFILE_DIR}}/.data'
+
+tasks:
+  # src: tasks
+  src:clone:
+    desc: Download Grafana release
+    cmds:
+      - mkdir -p {{.GF_BIN}}
+      - curl -L {{.GF_DOWNLOAD_URL}} | tar xz --strip-components=1 -C {{.GF_BIN}}
+      - xattr -r -d com.apple.quarantine {{.GF_BIN}}/ 2>/dev/null || true
+      - echo "{{.GF_VERSION}}" > {{.GF_BIN}}/.version
+    status:
+      - test -f {{.GF_BIN_PATH}}
+
+  src:update:
+    desc: Re-download Grafana (update GF_VERSION var first)
+    cmds:
+      - rm -rf {{.GF_BIN}}
+      - task: src:clone
+
+  # bin: tasks
+  bin:build:
+    desc: Grafana is pre-built (no-op)
+    status:
+      - test -f {{.GF_BIN_PATH}}
+    cmds:
+      - echo "Grafana is pre-built, nothing to compile"
+
+  bin:download:
+    desc: Download Grafana release from our releases
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+    cmds:
+      - mkdir -p {{.GF_BIN}}
+      - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/grafana-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GF_BIN}}
+      - echo "{{.RELEASE_VERSION}}" > {{.GF_BIN}}/.version
+    status:
+      - test -f {{.GF_BIN_PATH}}
+
+  # Service tasks
+  deps:
+    desc: No dependencies for Grafana binary
+    cmds:
+      - echo "Grafana is pre-built, no dependencies to download"
+
+  ensure:
+    desc: Ensure binary exists (download if needed)
+    status:
+      - test -f {{.GF_BIN_PATH}}
+    cmds:
+      - task: bin:download
+
+  health:
+    desc: Check if Grafana is healthy
+    cmds:
+      - curl -sf http://localhost:3000/api/health > /dev/null
+
+  install:
+    desc: Install Grafana plugins
+    preconditions:
+      - test -f {{.GF_BIN}}/bin/grafana-cli
+    cmds:
+      - '{{.GF_BIN}}/bin/grafana-cli --pluginsDir={{.GF_DATA}}/plugins plugins install grafana-clock-panel'
+
+  run:
+    desc: Run Grafana server binary
+    dir: '{{.TASKFILE_DIR}}'
+    deps: [ensure]
+    cmds:
+      - mkdir -p {{.GF_DATA}}/plugins
+      - mkdir -p {{.GF_DATA}}/provisioning/dashboards
+      - mkdir -p {{.GF_DATA}}/provisioning/datasources
+      - '{{.GF_BIN_PATH}} --homepath={{.GF_BIN}} --config={{.TASKFILE_DIR}}/grafana.ini cfg:default.paths.data={{.GF_DATA}} cfg:default.paths.plugins={{.GF_DATA}}/plugins cfg:default.paths.provisioning={{.GF_DATA}}/provisioning'
+
+  test:
+    desc: Validate Grafana binary works
+    deps: [ensure]
+    cmds:
+      - '{{.GF_BIN_PATH}} --version'
+
+  package:
+    desc: Package Grafana for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+    cmds:
+      - tar -czvf {{.DIST}}/grafana-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.GF_BIN}} .
+
+  # clean: tasks
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.GF_BIN}}
+    status:
+      - '! test -d {{.GF_BIN}}'
+
+  clean:all:
+    desc: Clean everything (.bin, .data)
+    cmds:
+      - rm -rf {{.GF_BIN}} {{.GF_DATA}}
+
+  clean:data:
+    desc: Clean data directory
+    cmds:
+      - rm -rf {{.GF_DATA}}
+    status:
+      - '! test -d {{.GF_DATA}}'
+
+  clean:src:
+    desc: Clean source directory
+    cmds:
+      - rm -rf {{.GF_BIN}}
+    status:
+      - '! test -d {{.GF_BIN}}'

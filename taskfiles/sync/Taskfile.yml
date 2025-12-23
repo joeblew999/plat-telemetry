@@ -1,0 +1,142 @@
+version: '3'
+
+vars:
+  SYNC_BIN_NAME: sync
+  SYNC_SRC: '{{.TASKFILE_DIR}}/.src'
+  SYNC_BIN: '{{.TASKFILE_DIR}}/.bin'
+  SYNC_DATA: '{{.TASKFILE_DIR}}/.data'
+  SYNC_BIN_PATH: "{{.SYNC_BIN}}/{{.SYNC_BIN_NAME}}"
+  SYNC_UPSTREAM_REPO: https://github.com/joeblew999/plat-telemetry
+  SYNC_UPSTREAM_BRANCH: main
+  SYNC_PORT: '{{.SYNC_PORT | default "9090"}}'
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks
+  src:clone:
+    desc: Clone sync source (sync is in-repo code)
+    cmds:
+      - echo "▶ sync is in-repo code, no clone needed"
+    status:
+      - test -d ../sync
+
+  src:update:
+    desc: Update sync source
+    cmds:
+      - git pull origin {{.SYNC_UPSTREAM_BRANCH}}
+
+  # bin: tasks
+  bin:build:
+    desc: Build sync binary from source
+    dir: '{{.TASKFILE_DIR}}'
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.SYNC_BIN_PATH}}"
+      - "{{.SYNC_BIN}}/.version"
+    cmds:
+      - mkdir -p {{.SYNC_BIN}}
+      - go build -o {{.SYNC_BIN_PATH}} .
+      - |
+        echo "commit: $(git rev-parse --short HEAD)" > {{.SYNC_BIN}}/.version
+        echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> {{.SYNC_BIN}}/.version
+        echo "checksum: $(shasum -a 256 {{.SYNC_BIN_PATH}} | awk '{print $1}')" >> {{.SYNC_BIN}}/.version
+
+  bin:download:
+    desc: Download pre-built sync binary (USER)
+    vars:
+      RELEASE_REPO: '{{.RELEASE_REPO | default "joeblew999/plat-telemetry"}}'
+      RELEASE_VERSION: '{{.RELEASE_VERSION | default "latest"}}'
+    cmds:
+      - mkdir -p {{.SYNC_BIN}}
+      - |
+        gh release download {{.RELEASE_VERSION}} \
+          --repo {{.RELEASE_REPO}} \
+          --pattern "{{.SYNC_BIN_NAME}}-{{OS}}-{{ARCH}}.tar.gz" \
+          --output - | tar xz -C {{.SYNC_BIN}}
+      - chmod +x {{.SYNC_BIN_PATH}}
+
+  # Service tasks
+  config:port:
+    desc: Output service port
+    cmds:
+      - echo "{{.SYNC_PORT}}"
+    silent: true
+
+  config:version:
+    desc: Output pinned version (uses git commit since sync is in-repo)
+    cmds:
+      - git rev-parse --short HEAD
+    silent: true
+
+  deps:
+    desc: Download Go dependencies
+    cmds:
+      - go mod download
+    status:
+      - test -f go.sum
+
+  ensure:
+    desc: Ensure binary exists (build from source)
+    status:
+      - test -f {{.SYNC_BIN_PATH}}
+    cmds:
+      - task: bin:build
+
+  health:
+    desc: Check webhook server health
+    cmds:
+      - curl -f http://localhost:{{.SYNC_PORT}}/health || exit 1
+
+  health:poller:
+    desc: Check poller service health (always returns success if running)
+    cmds:
+      - exit 0
+
+  poll:
+    desc: Run polling service for upstream repos
+    deps: [ensure]
+    cmds:
+      - "{{.SYNC_BIN_PATH}} poll"
+
+  poll:taskfiles:
+    desc: Run Taskfile polling service for version changes
+    deps: [ensure]
+    cmds:
+      - "{{.SYNC_BIN_PATH}} poll-taskfiles"
+
+  run:
+    desc: Run webhook server
+    deps: [ensure]
+    env:
+      PORT: "{{.SYNC_PORT}}"
+    cmds:
+      - "{{.SYNC_BIN_PATH}} watch"
+
+  test:
+    desc: Run unit tests
+    cmds:
+      - go test -v ./...
+
+  package:
+    desc: Package sync binary for release
+    vars:
+      DIST_DIR: '{{.DIST_DIR | default "../.dist"}}'
+    cmds:
+      - mkdir -p {{.DIST_DIR}}
+      - tar czf {{.DIST_DIR}}/{{.SYNC_BIN_NAME}}-{{OS}}-{{ARCH}}.tar.gz -C {{.SYNC_BIN}} {{.SYNC_BIN_NAME}} .version
+
+  # clean: tasks
+  clean:
+    desc: Clean built binaries
+    cmds:
+      - rm -rf {{.SYNC_BIN}}
+
+  clean:data:
+    desc: Clean runtime data
+    cmds:
+      - echo "No data to clean"
