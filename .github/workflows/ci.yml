@@ -16,17 +16,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
+  # Build binaries (parallel per OS)
+  build:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
-
-    environment:
-      name: ${{ github.ref == 'refs/heads/main' && 'github-pages' || '' }}
-      url: ${{ github.ref == 'refs/heads/main' && steps.deployment.outputs.page_url || '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -39,16 +36,38 @@ jobs:
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@latest
 
-      - name: Run CI
-        run: task ci
+      - name: Build binaries
+        run: task ci:build
 
-      # Artifact uploads (GitHub Actions specific)
-      - name: Upload release artifacts
+      - name: Upload binaries
         if: startsWith(github.ref, 'refs/tags/')
         uses: actions/upload-artifact@v4
         with:
           name: binaries-${{ runner.os }}-${{ runner.arch }}
           path: .dist/
+
+  # Run tests (parallel per OS)
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Run tests
+        run: task ci:test
 
       - name: Upload test results
         if: always()
@@ -57,20 +76,42 @@ jobs:
           name: test-results-${{ runner.os }}
           path: .test-results/
 
+  # Build and deploy docs (Linux only, main branch only)
+  pages:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@latest
+
+      - name: Build pages
+        run: task ci:pages
+
       - name: Upload pages artifact
-        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/.dist
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/main' && runner.os == 'Linux'
         id: deployment
         uses: actions/deploy-pages@v4
 
+  # Create release (tags only, after build completes)
   release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: ci
+    needs: build
     runs-on: ubuntu-latest
 
     steps:
