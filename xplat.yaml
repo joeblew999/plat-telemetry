@@ -3,7 +3,7 @@ apiVersion: xplat/v1
 kind: Package
 
 name: telemetry
-version: latest
+version: main
 description: Telemetry stack - NATS, Liftbridge, Telegraf, sync services
 author: Gerard Webb
 license: MIT
