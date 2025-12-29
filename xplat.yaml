@@ -1,0 +1,103 @@
+# xplat.yaml - Package manifest for xplat ecosystem
+apiVersion: xplat/v1
+kind: Package
+
+name: telemetry
+version: latest
+description: Telemetry stack - NATS, Liftbridge, Telegraf, sync services
+author: Gerard Webb
+license: MIT
+
+# Multiple binaries built from subsystems
+# Each subsystem builds its own binary via Taskfile
+# binary:
+
+taskfile:
+  path: Taskfile.yml
+  namespace: telemetry
+
+# Core processes - the main services
+processes:
+  nats:
+    command: task nats:run
+    port: 4222
+    health_path: /healthz
+    readiness:
+      initial_delay: 2
+      period: 5
+
+  liftbridge:
+    command: task liftbridge:run
+    port: 9292
+    depends_on:
+      - nats
+    readiness:
+      initial_delay: 3
+      period: 5
+
+  arc:
+    command: task arc:run
+    port: 8080
+    readiness:
+      initial_delay: 3
+      period: 5
+
+  telegraf:
+    command: task telegraf:run
+    depends_on:
+      - arc
+      - liftbridge
+    readiness:
+      initial_delay: 3
+      period: 5
+
+  sync-cf:
+    command: task sync-cf:run
+    port: 8081
+    readiness:
+      initial_delay: 3
+      period: 10
+
+  sync-gh:
+    command: task sync-gh:run
+    port: 8082
+    readiness:
+      initial_delay: 3
+      period: 10
+
+  docs:
+    command: task docs:run
+    port: 3000
+    readiness:
+      initial_delay: 5
+      period: 5
+
+env:
+  required:
+    - name: GITHUB_TOKEN
+      description: GitHub personal access token for sync-gh
+
+    - name: CF_API_TOKEN
+      description: Cloudflare API token for sync-cf
+
+    - name: CF_ACCOUNT_ID
+      description: Cloudflare account ID
+
+  optional:
+    - name: CF_WEBHOOK_SECRET
+      description: Cloudflare webhook secret
+
+    - name: NATS_URL
+      description: NATS server URL
+      default: nats://localhost:4222
+
+    - name: LIFTBRIDGE_URL
+      description: Liftbridge server URL
+      default: localhost:9292
+
+dependencies:
+  build:
+    - go
+    - nats-server
+    - liftbridge
+    - telegraf
