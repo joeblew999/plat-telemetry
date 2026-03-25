@@ -6,11 +6,12 @@ vars:
   LB_VERSION: '{{.LB_VERSION | default "master"}}'
   LB_SRC: '{{.TASKFILE_DIR}}/.src'
   LB_BIN: '{{.TASKFILE_DIR}}/.bin'
-  LB_BIN_PATH: '{{.LB_BIN}}/{{.LB_BIN_NAME}}'
+  LB_BIN_PATH: '{{.LB_BIN}}/{{.LB_BIN_NAME}}{{exeExt}}'
   LB_DATA: '{{.TASKFILE_DIR}}/.data'
   LB_CONFIG: '{{.TASKFILE_DIR}}/configs'
   LB_MODE: '{{.LB_MODE | default "standalone"}}'  # standalone or cluster
   LB_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
+  LB_SYNC_CLI: '{{.ROOT_DIR}}/sync-git/.bin/sync-git'
 
 env:
   GOWORK: off
@@ -20,17 +21,16 @@ tasks:
   src:clone:
     desc: Clone the upstream repository at pinned version
     cmds:
-      - git clone --branch {{.LB_VERSION}} --depth 1 {{.LB_UPSTREAM_REPO}} {{.LB_SRC}}
+      - '{{.LB_SYNC_CLI}} clone {{.LB_UPSTREAM_REPO}} {{.LB_SRC}} {{.LB_VERSION}}'
     status:
       - test -d {{.LB_SRC}}
 
   src:update:
     desc: Fetch and checkout pinned version
     deps: [src:clone]
-    dir: '{{.LB_SRC}}'
     cmds:
-      - git fetch --tags
-      - git checkout {{.LB_VERSION}}
+      - '{{.LB_SYNC_CLI}} fetch {{.LB_SRC}} --tags'
+      - '{{.LB_SYNC_CLI}} checkout {{.LB_SRC}} {{.LB_VERSION}}'
 
   # bin: tasks
   bin:build:
@@ -42,12 +42,7 @@ tasks:
     cmds:
       - mkdir -p {{.LB_BIN}}
       - go build -o {{.LB_BIN_PATH}} .
-      - |
-        {
-          echo "commit: $(git -C {{.LB_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.LB_BIN_PATH}} | awk '{print $1}')"
-        } > {{.LB_BIN}}/.version
+      - '{{.LB_SYNC_CLI}} version-file {{.LB_BIN_PATH}} --src={{.LB_SRC}}'
 
   bin:download:
     desc: Download pre-built binary from release
@@ -59,7 +54,7 @@ tasks:
     cmds:
       - mkdir -p {{.LB_BIN}}
       - curl -L {{.LB_RELEASE_URL}}/{{.LB_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.LB_BIN}}
-      - echo "{{.RELEASE_VERSION}}" > {{.LB_BIN}}/.version
+      - '{{.LB_SYNC_CLI}} version-file {{.LB_BIN_PATH}} --version={{.RELEASE_VERSION}}'
     status:
       - test -f {{.LB_BIN_PATH}}
 

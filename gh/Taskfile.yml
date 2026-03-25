@@ -6,8 +6,9 @@ vars:
   GH_VERSION: '{{.GH_VERSION | default "v2.83.2"}}'
   GH_SRC: '{{.TASKFILE_DIR}}/.src'
   GH_BIN: '{{.TASKFILE_DIR}}/.bin'
-  GH_BIN_PATH: '{{.GH_BIN}}/{{.GH_BIN_NAME}}'
+  GH_BIN_PATH: '{{.GH_BIN}}/{{.GH_BIN_NAME}}{{exeExt}}'
   GH_DATA: '{{.TASKFILE_DIR}}/.data'
+  GH_SYNC_CLI: '{{.ROOT_DIR}}/sync-git/.bin/sync-git'
 
 env:
   GOWORK: off
@@ -17,17 +18,16 @@ tasks:
   src:clone:
     desc: Clone the upstream repository at pinned version
     cmds:
-      - git clone --branch {{.GH_VERSION}} --depth 1 {{.GH_UPSTREAM_REPO}} {{.GH_SRC}}
+      - '{{.GH_SYNC_CLI}} clone {{.GH_UPSTREAM_REPO}} {{.GH_SRC}} {{.GH_VERSION}}'
     status:
       - test -d {{.GH_SRC}}
 
   src:update:
     desc: Fetch and checkout pinned version
     deps: [src:clone]
-    dir: '{{.GH_SRC}}'
     cmds:
-      - git fetch --tags
-      - git checkout {{.GH_VERSION}}
+      - '{{.GH_SYNC_CLI}} fetch {{.GH_SRC}} --tags'
+      - '{{.GH_SYNC_CLI}} checkout {{.GH_SRC}} {{.GH_VERSION}}'
 
   # bin: tasks
   bin:build:
@@ -39,12 +39,7 @@ tasks:
     cmds:
       - mkdir -p {{.GH_BIN}}
       - go build -o {{.GH_BIN_PATH}} ./cmd/gh
-      - |
-        {
-          echo "commit: $(git -C {{.GH_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.GH_BIN_PATH}} | awk '{print $1}')"
-        } > {{.GH_BIN}}/.version
+      - '{{.GH_SYNC_CLI}} version-file {{.GH_BIN_PATH}} --src={{.GH_SRC}}'
 
   bin:download:
     desc: Download pre-built binary from release
@@ -56,7 +51,7 @@ tasks:
     cmds:
       - mkdir -p {{.GH_BIN}}
       - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/{{.GH_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GH_BIN}}
-      - echo "{{.RELEASE_VERSION}}" > {{.GH_BIN}}/.version
+      - '{{.GH_SYNC_CLI}} version-file {{.GH_BIN_PATH}} --version={{.RELEASE_VERSION}}'
     status:
       - test -f {{.GH_BIN_PATH}}
 
@@ -278,7 +273,7 @@ tasks:
     vars:
       REPO: '{{.REPO | default .RELEASE_REPO}}'
     cmds:
-      - '{{.GH_BIN_PATH}} api repos/{{.REPO}}/pages --jq ''{status: .status, url: .html_url, source: .build_type}'''
+      - '{{.GH_BIN_PATH}} api repos/{{.REPO}}/pages --jq ''{build_type: .build_type, branch: .source.branch, url: .html_url}'''
 
   pages:enable:
     desc: Enable GitHub Pages with Actions
@@ -312,6 +307,64 @@ tasks:
       REPO: '{{.REPO | default .RELEASE_REPO}}'
     cmds:
       - '{{.GH_BIN_PATH}} api repos/{{.REPO}}/pages/builds --jq ''.[] | {status: .status, created_at: .created_at, duration: .duration}'''
+
+  pages:deploy:
+    desc: Deploy docs to gh-pages branch (alternative to Actions)
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+      DIST: '{{.DIST | default "docs/.dist"}}'
+    cmds:
+      - |
+        set -e
+        echo "▶ Deploying to gh-pages branch..."
+
+        # Create temp dir for deployment
+        DEPLOY_DIR=$(mktemp -d)
+        trap "rm -rf $DEPLOY_DIR" EXIT
+
+        # Copy built docs
+        cp -r {{.DIST}}/* $DEPLOY_DIR/
+
+        # Initialize git repo
+        cd $DEPLOY_DIR
+        git init
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+
+        # Add and commit
+        git add -A
+        git commit -m "Deploy docs $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+        # Force push to gh-pages
+        git push -f https://github.com/{{.REPO}}.git HEAD:gh-pages
+
+        echo "✅ Deployed to gh-pages branch"
+
+  pages:setup:branch:
+    desc: Configure Pages to deploy from gh-pages branch
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "▶ Configuring Pages to use gh-pages branch..."
+        {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X PUT \
+          -f build_type=legacy \
+          -f 'source[branch]=gh-pages' \
+          -f 'source[path]=/'
+        echo "✅ Pages configured to deploy from gh-pages branch"
+
+  pages:setup:workflow:
+    desc: Configure Pages to deploy from Actions workflow
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default .RELEASE_REPO}}'
+    cmds:
+      - |
+        echo "▶ Configuring Pages to use Actions workflow..."
+        {{.GH_BIN_PATH}} api repos/{{.REPO}}/pages -X PUT -f build_type=workflow
+        echo "✅ Pages configured to deploy from Actions workflow"
 
   # clean: tasks
   clean:

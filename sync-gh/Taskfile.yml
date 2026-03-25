@@ -1,0 +1,175 @@
+version: '3'
+
+vars:
+  SYNC_GH_BIN_NAME: sync-gh
+  SYNC_GH_BIN: '{{.TASKFILE_DIR}}/.bin'
+  SYNC_GH_BIN_PATH: '{{.SYNC_GH_BIN}}/{{.SYNC_GH_BIN_NAME}}{{exeExt}}'
+  SYNC_GH_DATA: '{{.TASKFILE_DIR}}/.data'
+  SYNC_GH_PORT: '{{.SYNC_GH_PORT | default "9090"}}'
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks (sync-gh is in-repo code, no-ops for conformance)
+  src:clone:
+    desc: No-op (sync-gh is in-repo code)
+    cmds:
+      - 'true'
+
+  src:update:
+    desc: No-op (sync-gh is in-repo code)
+    cmds:
+      - 'true'
+
+  # bin: tasks
+  bin:build:
+    desc: Build sync-gh binary from source
+    dir: '{{.TASKFILE_DIR}}'
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.SYNC_GH_BIN_PATH}}"
+      - "{{.SYNC_GH_BIN}}/.version"
+    cmds:
+      - mkdir -p {{.SYNC_GH_BIN}}
+      - go build -o {{.SYNC_GH_BIN_PATH}} .
+      - '{{.ROOT_DIR}}/sync-git/.bin/sync-git version-file {{.SYNC_GH_BIN_PATH}} --src={{.ROOT_DIR}}'
+
+  bin:download:
+    desc: Download pre-built sync-gh binary (USER)
+    vars:
+      RELEASE_REPO: '{{.RELEASE_REPO | default "joeblew999/plat-telemetry"}}'
+      RELEASE_VERSION: '{{.RELEASE_VERSION | default "latest"}}'
+    cmds:
+      - mkdir -p {{.SYNC_GH_BIN}}
+      - |
+        gh release download {{.RELEASE_VERSION}} \
+          --repo {{.RELEASE_REPO}} \
+          --pattern "{{.SYNC_GH_BIN_NAME}}-{{OS}}-{{ARCH}}.tar.gz" \
+          --output - | tar xz -C {{.SYNC_GH_BIN}}
+      - chmod +x {{.SYNC_GH_BIN_PATH}}
+
+  # Service tasks (alphabetical)
+  config:port:
+    desc: Output service port
+    cmds:
+      - echo "{{.SYNC_GH_PORT}}"
+    silent: true
+
+  config:version:
+    desc: Output current version
+    deps: [ensure]
+    cmds:
+      - '{{.ROOT_DIR}}/sync-git/.bin/sync-git version-file {{.SYNC_GH_BIN_PATH}} --read'
+    silent: true
+
+  deps:
+    desc: Download Go dependencies
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go mod download
+    status:
+      - test -f go.sum
+
+  ensure:
+    desc: Ensure binary exists (build from source)
+    status:
+      - test -f {{.SYNC_GH_BIN_PATH}}
+    cmds:
+      - task: bin:build
+
+  health:
+    desc: Check webhook server health
+    cmds:
+      - curl -sf http://localhost:{{.SYNC_GH_PORT}}/health > /dev/null
+
+  package:
+    desc: Package sync-gh binary for release
+    deps: [bin:build]
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR | default "../.dist"}}'
+    cmds:
+      - mkdir -p {{.DIST}}
+      - tar czf {{.DIST}}/{{.SYNC_GH_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.SYNC_GH_BIN}} {{.SYNC_GH_BIN_NAME}} .version
+
+  run:
+    desc: Run webhook server
+    deps: [ensure]
+    env:
+      PORT: '{{.SYNC_GH_PORT}}'
+    cmds:
+      - '{{.SYNC_GH_BIN_PATH}} webhook'
+
+  run:poll:
+    desc: Run polling service for upstream repos
+    deps: [ensure]
+    cmds:
+      - '{{.SYNC_GH_BIN_PATH}} poll'
+
+  run:poll-taskfiles:
+    desc: Run Taskfile polling service for version changes
+    deps: [ensure]
+    cmds:
+      - '{{.SYNC_GH_BIN_PATH}} poll-taskfiles'
+
+  state:
+    desc: "Capture GitHub state (usage: task sync-gh:state REPO=owner/repo)"
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default ""}}'
+      STATE_DIR: '{{.STATE_DIR | default (print .ROOT_DIR "/.github/state")}}'
+    cmds:
+      - '{{.SYNC_GH_BIN_PATH}} state {{.REPO}} --dir={{.STATE_DIR}}'
+
+  state:show:
+    desc: Show captured GitHub state
+    deps: [ensure]
+    vars:
+      STATE_DIR: '{{.STATE_DIR | default (print .ROOT_DIR "/.github/state")}}'
+    cmds:
+      - '{{.SYNC_GH_BIN_PATH}} state --show --dir={{.STATE_DIR}}'
+
+  test:
+    desc: Run unit tests
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go test -v ./...
+
+  tunnel:
+    desc: "Forward smee.io webhooks to local (usage: task sync-gh:tunnel SMEE_URL=https://smee.io/xxx)"
+    deps: [ensure]
+    vars:
+      SMEE_URL: '{{.SMEE_URL | default "new"}}'
+      TARGET: '{{.TARGET | default "http://localhost:9090/webhook"}}'
+    cmds:
+      - '{{.SYNC_GH_BIN_PATH}} tunnel {{.SMEE_URL}} {{.TARGET}}'
+
+  tunnel:setup:
+    desc: "Create smee channel and configure GitHub webhook (usage: task sync-gh:tunnel:setup REPO=owner/repo)"
+    deps: [ensure]
+    vars:
+      REPO: '{{.REPO | default "joeblew999/plat-telemetry"}}'
+      EVENTS: '{{.EVENTS | default "push,release,workflow_run,page_build,deployment_status"}}'
+    cmds:
+      - '{{.SYNC_GH_BIN_PATH}} tunnel-setup {{.REPO}} --events={{.EVENTS}}'
+
+  # clean: tasks (alphabetical)
+  clean:
+    desc: Clean built binaries
+    cmds:
+      - rm -rf {{.SYNC_GH_BIN}}
+
+  clean:all:
+    desc: Clean everything (binaries + data)
+    cmds:
+      - rm -rf {{.SYNC_GH_BIN}} {{.SYNC_GH_DATA}}
+
+  clean:data:
+    desc: Clean runtime data
+    cmds:
+      - rm -rf {{.SYNC_GH_DATA}}

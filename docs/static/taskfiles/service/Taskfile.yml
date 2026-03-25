@@ -3,7 +3,8 @@ version: '3'
 vars:
   SVC_BIN_NAME: plat-telemetry-svc
   SVC_BIN: '{{.TASKFILE_DIR}}/.bin'
-  SVC_BIN_PATH: '{{.SVC_BIN}}/{{.SVC_BIN_NAME}}'
+  SVC_BIN_PATH: '{{.SVC_BIN}}/{{.SVC_BIN_NAME}}{{exeExt}}'
+  SVC_SYNC_CLI: '{{.ROOT_DIR}}/sync-git/.bin/sync-git'
 
 env:
   GOWORK: off
@@ -16,12 +17,7 @@ tasks:
     cmds:
       - mkdir -p {{.SVC_BIN}}
       - go build -o {{.SVC_BIN_PATH}} .
-      - |
-        {
-          echo "commit: $(git rev-parse --short HEAD)"
-          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.SVC_BIN_PATH}} | awk '{print $1}')"
-        } > {{.SVC_BIN}}/.version
+      - '{{.SVC_SYNC_CLI}} version-file {{.SVC_BIN_PATH}} --src={{.ROOT_DIR}}'
     sources:
       - '*.go'
       - go.mod

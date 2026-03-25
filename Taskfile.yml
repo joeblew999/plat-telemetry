@@ -1,13 +1,17 @@
 version: '3'
 
+# Load environment variables from root .env file
+dotenv:
+  - .env
+
 vars:
   RELEASE_REPO: joeblew999/plat-telemetry
   RELEASE_VERSION: latest
   DIST_DIR: '{{.ROOT_DIR}}/.dist'
   # Core subsystems that build binaries and run as services
-  SUBSYSTEMS_BUILD: arc docs gh liftbridge nats pc sync telegraf
+  SUBSYSTEMS_BUILD: arc docs gh liftbridge nats pc sync-cf sync-gh sync-git telegraf
   # Subsystems that get released
-  SUBSYSTEMS_RELEASE: arc gh liftbridge nats pc sync telegraf
+  SUBSYSTEMS_RELEASE: arc gh liftbridge nats pc sync-cf sync-gh sync-git telegraf
   # Subsystems to build in CI (smaller set for faster iteration)
   # Note: gh is required for releases, always include it
   SUBSYSTEMS_CI: '{{.SUBSYSTEMS_CI | default "gh nats"}}'
@@ -20,7 +24,10 @@ includes:
   nats: ./nats
   pc: ./pc
   service: ./service
-  sync: ./sync
+  sync-cf: ./sync-cf
+  sync-cf-worker: ./sync-cf-worker
+  sync-gh: ./sync-gh
+  sync-git: ./sync-git
   telegraf: ./telegraf
   test-reload: ./test-reload
   utm: ./utm
@@ -330,6 +337,12 @@ tasks:
     cmds:
       - sync/.bin/sync check {{.SUBSYSTEM | default "all"}}
 
+  state:
+    desc: Show GitHub state (from ci:sync cron job)
+    deps: [sync:ensure]
+    cmds:
+      - sync/.bin/sync state --show --dir=.github/state
+
   sync:update:
     desc: Update subsystem with available update (called by webhook)
     vars:
@@ -429,6 +442,32 @@ tasks:
       - echo "▶ Building docs for GitHub Pages..."
       - task: docs:build
       - echo "✅ Docs built in docs/.dist"
+
+  ci:pages:deploy:
+    desc: CI pages deploy - push docs to gh-pages branch (replaces Actions)
+    cmds:
+      - echo "▶ Deploying docs to gh-pages branch..."
+      - task: docs:build
+      - task: gh:pages:deploy
+      - echo "✅ Docs deployed to gh-pages branch"
+
+  ci:sync:
+    desc: CI sync - capture GitHub state (cron job)
+    deps: [sync:ensure]
+    cmds:
+      - sync/.bin/sync state $GITHUB_REPOSITORY --dir=.github/state
+      - |
+        # Commit and push state if changed
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git add .github/state/
+        if git diff --staged --quiet; then
+          echo "ℹ️  No state changes"
+        else
+          git commit -m "chore: sync GitHub state [skip ci]"
+          git push
+          echo "✅ State committed and pushed"
+        fi
 
   ci:release:
     desc: CI release step - upload CI subsystem binaries to GitHub releases

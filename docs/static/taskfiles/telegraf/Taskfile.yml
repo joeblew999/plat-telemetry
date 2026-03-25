@@ -6,9 +6,10 @@ vars:
   TG_VERSION: '{{.TG_VERSION | default "master"}}'
   TG_SRC: '{{.TASKFILE_DIR}}/.src'
   TG_BIN: '{{.TASKFILE_DIR}}/.bin'
-  TG_BIN_PATH: '{{.TG_BIN}}/{{.TG_BIN_NAME}}'
+  TG_BIN_PATH: '{{.TG_BIN}}/{{.TG_BIN_NAME}}{{exeExt}}'
   TG_DATA: '{{.TASKFILE_DIR}}/.data'
   TG_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
+  TG_SYNC_CLI: '{{.ROOT_DIR}}/sync-git/.bin/sync-git'
 
 env:
   GOWORK: off
@@ -18,17 +19,16 @@ tasks:
   src:clone:
     desc: Clone the upstream repository at pinned version
     cmds:
-      - git clone --branch {{.TG_VERSION}} --depth 1 {{.TG_UPSTREAM_REPO}} {{.TG_SRC}}
+      - '{{.TG_SYNC_CLI}} clone {{.TG_UPSTREAM_REPO}} {{.TG_SRC}} {{.TG_VERSION}}'
     status:
       - test -d {{.TG_SRC}}
 
   src:update:
     desc: Fetch and checkout pinned version
     deps: [src:clone]
-    dir: '{{.TG_SRC}}'
     cmds:
-      - git fetch origin {{.TG_VERSION}}
-      - git checkout {{.TG_VERSION}}
+      - '{{.TG_SYNC_CLI}} fetch {{.TG_SRC}} --tags'
+      - '{{.TG_SYNC_CLI}} checkout {{.TG_SRC}} {{.TG_VERSION}}'
 
   # bin: tasks
   bin:build:
@@ -41,12 +41,7 @@ tasks:
       - mkdir -p {{.TG_BIN}}
       - make build
       - cp {{.TG_BIN_NAME}} {{.TG_BIN}}/
-      - |
-        {
-          echo "commit: $(git -C {{.TG_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.TG_BIN_PATH}} | awk '{print $1}')"
-        } > {{.TG_BIN}}/.version
+      - '{{.TG_SYNC_CLI}} version-file {{.TG_BIN_PATH}} --src={{.TG_SRC}}'
 
   bin:download:
     desc: Download pre-built binary from release
@@ -58,7 +53,7 @@ tasks:
     cmds:
       - mkdir -p {{.TG_BIN}}
       - curl -L {{.TG_RELEASE_URL}}/{{.TG_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.TG_BIN}}
-      - echo "{{.RELEASE_VERSION}}" > {{.TG_BIN}}/.version
+      - '{{.TG_SYNC_CLI}} version-file {{.TG_BIN_PATH}} --version={{.RELEASE_VERSION}}'
     status:
       - test -f {{.TG_BIN_PATH}}
 
@@ -95,11 +90,11 @@ tasks:
       - test -d {{.TG_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (build or download)
+    desc: Ensure binary exists (build from source)
     status:
       - test -f {{.TG_BIN_PATH}}
     cmds:
-      - task: bin:download
+      - task: bin:build
 
   health:
     desc: Check if Telegraf is healthy

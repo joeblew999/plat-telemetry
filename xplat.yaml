@@ -101,3 +101,18 @@ dependencies:
     - nats-server
     - liftbridge
     - telegraf
+
+# Project-specific gitignore patterns (base patterns cover .src/.bin/.data)
+gitignore:
+  patterns:
+    - "/.data/"
+    - "/data/"
+    - "bin/"
+    - ".dist/"
+    - ".test-results/"
+    - "node_modules/"
+    - ".wrangler/"
+    - "*.local.toml"
+    - "docs/public/"
+    - ".playwright-mcp/"
+    - ".pc.sock"

@@ -5,9 +5,10 @@ vars:
   SYNC_SRC: '{{.TASKFILE_DIR}}/.src'
   SYNC_BIN: '{{.TASKFILE_DIR}}/.bin'
   SYNC_DATA: '{{.TASKFILE_DIR}}/.data'
-  SYNC_BIN_PATH: "{{.SYNC_BIN}}/{{.SYNC_BIN_NAME}}"
+  SYNC_BIN_PATH: "{{.SYNC_BIN}}/{{.SYNC_BIN_NAME}}{{exeExt}}"
   SYNC_UPSTREAM_REPO: https://github.com/joeblew999/plat-telemetry
   SYNC_UPSTREAM_BRANCH: main
+  SYNC_PORT: '{{.SYNC_PORT | default "9090"}}'
 
 env:
   GOWORK: off
@@ -60,6 +61,18 @@ tasks:
       - chmod +x {{.SYNC_BIN_PATH}}
 
   # Service tasks
+  config:port:
+    desc: Output service port
+    cmds:
+      - echo "{{.SYNC_PORT}}"
+    silent: true
+
+  config:version:
+    desc: Output pinned version (uses git commit since sync is in-repo)
+    cmds:
+      - git rev-parse --short HEAD
+    silent: true
+
   deps:
     desc: Download Go dependencies
     cmds:
@@ -68,21 +81,16 @@ tasks:
       - test -f go.sum
 
   ensure:
-    desc: Ensure binary exists
-    cmds:
-      - |
-        if [ -f go.mod ]; then
-          task bin:build
-        else
-          task bin:download
-        fi
+    desc: Ensure binary exists (build from source)
     status:
       - test -f {{.SYNC_BIN_PATH}}
+    cmds:
+      - task: bin:build
 
   health:
     desc: Check webhook server health
     cmds:
-      - curl -f http://localhost:9090/health || exit 1
+      - curl -f http://localhost:{{.SYNC_PORT}}/health || exit 1
 
   health:poller:
     desc: Check poller service health (always returns success if running)
@@ -105,9 +113,9 @@ tasks:
     desc: Run webhook server
     deps: [ensure]
     env:
-      PORT: "9090"
+      PORT: "{{.SYNC_PORT}}"
     cmds:
-      - "{{.SYNC_BIN_PATH}} watch"
+      - "{{.SYNC_BIN_PATH}} webhook"
 
   test:
     desc: Run unit tests

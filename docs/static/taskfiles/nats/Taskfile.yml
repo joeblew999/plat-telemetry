@@ -6,7 +6,7 @@ vars:
   NATS_VERSION: '{{.NATS_VERSION | default "v2.10.24"}}'
   NATS_SRC: '{{.TASKFILE_DIR}}/.src'
   NATS_BIN: '{{.TASKFILE_DIR}}/.bin'
-  NATS_BIN_PATH: '{{.NATS_BIN}}/{{.NATS_BIN_NAME}}'
+  NATS_BIN_PATH: '{{.NATS_BIN}}/{{.NATS_BIN_NAME}}{{exeExt}}'
   NATS_DATA: '{{.TASKFILE_DIR}}/.data'
   NATS_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
@@ -86,11 +86,11 @@ tasks:
       - test -d {{.NATS_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (build or download)
+    desc: Ensure binary exists (build from source)
     status:
       - test -f {{.NATS_BIN_PATH}}
     cmds:
-      - task: bin:download
+      - task: bin:build
 
   health:
     desc: Check if NATS is healthy

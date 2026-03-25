@@ -1,3 +1,8 @@
 go 1.25.5
 
-use ./sync
+use (
+	./sync-cf
+	./sync-cf-worker
+	./sync-gh
+	./sync-git
+)

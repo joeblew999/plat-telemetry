@@ -1,0 +1,201 @@
+version: '3'
+
+vars:
+  SYNC_CF_WORKER_BIN_NAME: app.wasm
+  SYNC_CF_WORKER_VERSION: '{{.SYNC_CF_WORKER_VERSION | default "0.1.0"}}'
+  SYNC_CF_WORKER_SRC: '{{.TASKFILE_DIR}}'
+  SYNC_CF_WORKER_BIN: '{{.TASKFILE_DIR}}/.bin'
+  SYNC_CF_WORKER_BIN_PATH: '{{.SYNC_CF_WORKER_BIN}}/{{.SYNC_CF_WORKER_BIN_NAME}}{{exeExt}}'
+  SYNC_CF_WORKER_PORT: '{{.SYNC_CF_WORKER_PORT | default "8787"}}'
+  # Pin workers-assets-gen version for reproducibility
+  SYNC_CF_WORKER_ASSETS_GEN_VERSION: v0.31.0
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks (sync-cf-worker is in-repo code, no-ops for conformance)
+  src:clone:
+    desc: No-op (sync-cf-worker is in-repo code)
+    cmds:
+      - 'true'
+
+  src:update:
+    desc: No-op (sync-cf-worker is in-repo code)
+    cmds:
+      - 'true'
+
+  # bin: tasks
+  bin:build:
+    desc: Build WASM binary with TinyGo (728KB, fits free tier)
+    dir: '{{.SYNC_CF_WORKER_SRC}}'
+    status:
+      - test -f {{.SYNC_CF_WORKER_BIN_PATH}}
+      - test -f {{.SYNC_CF_WORKER_BIN}}/worker.mjs
+    cmds:
+      - mkdir -p {{.SYNC_CF_WORKER_BIN}}
+      - go run github.com/syumai/workers/cmd/workers-assets-gen@{{.SYNC_CF_WORKER_ASSETS_GEN_VERSION}} -mode=tinygo -o={{.SYNC_CF_WORKER_BIN}}
+      - tinygo build -o {{.SYNC_CF_WORKER_BIN_PATH}} -target wasm -no-debug .
+      - |
+        {
+          echo "version: {{.SYNC_CF_WORKER_VERSION}}"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.SYNC_CF_WORKER_BIN_PATH}} | awk '{print $1}')"
+          echo "size: $(du -h {{.SYNC_CF_WORKER_BIN_PATH}} | cut -f1)"
+          echo "compiler: tinygo"
+        } > {{.SYNC_CF_WORKER_BIN}}/.version
+    sources:
+      - '{{.SYNC_CF_WORKER_SRC}}/*.go'
+      - '{{.SYNC_CF_WORKER_SRC}}/go.mod'
+    generates:
+      - '{{.SYNC_CF_WORKER_BIN_PATH}}'
+      - '{{.SYNC_CF_WORKER_BIN}}/worker.mjs'
+
+  bin:build:go:
+    desc: Build WASM binary with standard Go (5.6MB, requires paid tier)
+    dir: '{{.SYNC_CF_WORKER_SRC}}'
+    cmds:
+      - mkdir -p {{.SYNC_CF_WORKER_BIN}}
+      - go run github.com/syumai/workers/cmd/workers-assets-gen@{{.SYNC_CF_WORKER_ASSETS_GEN_VERSION}} -mode=go -o={{.SYNC_CF_WORKER_BIN}}
+      - GOOS=js GOARCH=wasm go build -ldflags="-X main.version={{.SYNC_CF_WORKER_VERSION}}" -o {{.SYNC_CF_WORKER_BIN_PATH}} .
+      - |
+        {
+          echo "version: {{.SYNC_CF_WORKER_VERSION}}"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.SYNC_CF_WORKER_BIN_PATH}} | awk '{print $1}')"
+          echo "size: $(du -h {{.SYNC_CF_WORKER_BIN_PATH}} | cut -f1)"
+          echo "compiler: go"
+        } > {{.SYNC_CF_WORKER_BIN}}/.version
+
+  # dev: tasks
+  dev:run:
+    desc: Run local development server with hot reload
+    deps: [wrangler:ensure, bin:build]
+    dir: '{{.SYNC_CF_WORKER_SRC}}'
+    cmds:
+      - PATH="$HOME/.bun/bin:$PATH" wrangler dev --local --port {{.SYNC_CF_WORKER_PORT}}
+
+  dev:test:
+    desc: Test local worker endpoints
+    cmds:
+      - |
+        echo "Testing sync-cf-worker at http://localhost:{{.SYNC_CF_WORKER_PORT}}"
+        echo ""
+        echo "GET /"
+        curl -sf http://localhost:{{.SYNC_CF_WORKER_PORT}}/ | jq . 2>/dev/null || curl -s http://localhost:{{.SYNC_CF_WORKER_PORT}}/
+        echo ""
+        echo "GET /health"
+        curl -sf http://localhost:{{.SYNC_CF_WORKER_PORT}}/health && echo " ✅" || echo "❌ health check failed"
+        echo ""
+        echo "POST /webhook/pages (test payload)"
+        curl -sf -X POST -H "Content-Type: application/json" \
+          -d '{"project":"test","deployment_id":"123"}' \
+          http://localhost:{{.SYNC_CF_WORKER_PORT}}/webhook/pages && echo " ✅" || echo "❌ webhook failed"
+        echo ""
+        echo "GET /metrics"
+        curl -sf http://localhost:{{.SYNC_CF_WORKER_PORT}}/metrics | jq . 2>/dev/null || curl -s http://localhost:{{.SYNC_CF_WORKER_PORT}}/metrics
+
+  # Service tasks (alphabetical)
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.SYNC_CF_WORKER_BIN}}
+      - rm -rf {{.SYNC_CF_WORKER_SRC}}/node_modules
+      - rm -rf {{.SYNC_CF_WORKER_SRC}}/.wrangler
+
+  config:port:
+    desc: Output configured port
+    cmds:
+      - echo "{{.SYNC_CF_WORKER_PORT}}"
+    silent: true
+
+  config:version:
+    desc: Output current version
+    cmds:
+      - echo "{{.SYNC_CF_WORKER_VERSION}}"
+    silent: true
+
+  deploy:
+    desc: Deploy to Cloudflare Workers
+    deps: [wrangler:ensure, bin:build]
+    dir: '{{.SYNC_CF_WORKER_SRC}}'
+    cmds:
+      - PATH="$HOME/.bun/bin:$PATH" wrangler deploy
+
+  deploy:production:
+    desc: Deploy to production environment
+    deps: [wrangler:ensure, bin:build]
+    dir: '{{.SYNC_CF_WORKER_SRC}}'
+    cmds:
+      - PATH="$HOME/.bun/bin:$PATH" wrangler deploy --env production
+
+  deps:
+    desc: Download Go dependencies
+    dir: '{{.SYNC_CF_WORKER_SRC}}'
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  ensure:
+    desc: Ensure WASM binary exists
+    status:
+      - test -f {{.SYNC_CF_WORKER_BIN_PATH}}
+    cmds:
+      - task: bin:build
+
+  health:
+    desc: Check if local worker is healthy
+    cmds:
+      - curl -sf http://localhost:{{.SYNC_CF_WORKER_PORT}}/health > /dev/null
+
+  run:
+    desc: Run local worker server (for process-compose)
+    deps: [wrangler:ensure, ensure]
+    dir: '{{.SYNC_CF_WORKER_SRC}}'
+    cmds:
+      - PATH="$HOME/.bun/bin:$PATH" wrangler dev --local --port {{.SYNC_CF_WORKER_PORT}}
+
+  test:
+    desc: Verify WASM build (no native tests for syscall/js code)
+    deps: [bin:build]
+    cmds:
+      - |
+        if [ -f {{.SYNC_CF_WORKER_BIN_PATH}} ]; then
+          echo "✅ WASM binary built successfully ($(cat {{.SYNC_CF_WORKER_BIN}}/.version | grep size | cut -d' ' -f2))"
+          cat {{.SYNC_CF_WORKER_BIN}}/.version
+        else
+          echo "❌ WASM binary not found"
+          exit 1
+        fi
+
+  # wrangler: tasks
+  wrangler:ensure:
+    desc: Ensure wrangler CLI is installed
+    status:
+      - command -v wrangler || test -f ~/.bun/bin/wrangler
+    cmds:
+      - task: wrangler:install
+
+  wrangler:install:
+    desc: Install wrangler CLI (via bun or npm)
+    cmds:
+      - |
+        if command -v bun >/dev/null 2>&1; then
+          bun install -g wrangler
+          echo ""
+          echo "ℹ️  Add bun to PATH if not already: export PATH=\"\$HOME/.bun/bin:\$PATH\""
+        elif command -v npm >/dev/null 2>&1; then
+          npm install -g wrangler
+        else
+          echo "❌ Neither bun nor npm found. Install one of them first."
+          exit 1
+        fi
+
+  wrangler:secret:set:
+    desc: Set a secret in Cloudflare Workers
+    deps: [wrangler:ensure]
+    dir: '{{.SYNC_CF_WORKER_SRC}}'
+    cmds:
+      - PATH="$HOME/.bun/bin:$PATH" wrangler secret put {{.NAME}}
+    requires:
+      vars: [NAME]

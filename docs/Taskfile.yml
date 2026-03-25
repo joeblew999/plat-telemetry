@@ -6,12 +6,13 @@ vars:
   DOCS_VERSION: '{{.DOCS_VERSION | default "v0.140.2"}}'
   DOCS_SRC: '{{.TASKFILE_DIR}}/.src'
   DOCS_BIN: '{{.TASKFILE_DIR}}/.bin'
-  DOCS_BIN_PATH: '{{.DOCS_BIN}}/{{.DOCS_BIN_NAME}}'
+  DOCS_BIN_PATH: '{{.DOCS_BIN}}/{{.DOCS_BIN_NAME}}{{exeExt}}'
   DOCS_CONTENT: '{{.TASKFILE_DIR}}'
   DOCS_DIST: '{{.TASKFILE_DIR}}/.dist'
   DOCS_DATA: '{{.TASKFILE_DIR}}/.data'
   DOCS_PORT: '{{.DOCS_PORT | default "1313"}}'
   DOCS_HEALTH_PATH: '{{.DOCS_HEALTH_PATH | default "/plat-telemetry/"}}'
+  DOCS_SYNC_CLI: '{{.ROOT_DIR}}/sync-git/.bin/sync-git'
 
 env:
   GOWORK: off
@@ -21,17 +22,16 @@ tasks:
   src:clone:
     desc: Clone Hugo upstream repository at pinned version
     cmds:
-      - git clone --branch {{.DOCS_VERSION}} --depth 1 {{.DOCS_UPSTREAM_REPO}} {{.DOCS_SRC}}
+      - '{{.DOCS_SYNC_CLI}} clone {{.DOCS_UPSTREAM_REPO}} {{.DOCS_SRC}} {{.DOCS_VERSION}}'
     status:
       - test -d {{.DOCS_SRC}}
 
   src:update:
     desc: Fetch and checkout pinned version
     deps: [src:clone]
-    dir: '{{.DOCS_SRC}}'
     cmds:
-      - git fetch --tags
-      - git checkout {{.DOCS_VERSION}}
+      - '{{.DOCS_SYNC_CLI}} fetch {{.DOCS_SRC}} --tags'
+      - '{{.DOCS_SYNC_CLI}} checkout {{.DOCS_SRC}} {{.DOCS_VERSION}}'
 
   # bin: tasks
   bin:build:
@@ -43,13 +43,7 @@ tasks:
     cmds:
       - mkdir -p {{.DOCS_BIN}}
       - go build -tags extended -o {{.DOCS_BIN_PATH}} .
-      - |
-        {
-          echo "version: {{.DOCS_VERSION}}"
-          echo "commit: $(git -C {{.DOCS_SRC}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.DOCS_BIN_PATH}} | awk '{print $1}')"
-        } > {{.DOCS_BIN}}/.version
+      - '{{.DOCS_SYNC_CLI}} version-file {{.DOCS_BIN_PATH}} --src={{.DOCS_SRC}}'
 
   bin:download:
     desc: Download pre-built Hugo binary from GitHub releases
@@ -70,12 +64,7 @@ tasks:
           ARCHIVE="hugo_extended_{{.VERSION_NUM}}_{{.GOOS}}-{{.GOARCH}}.tar.gz"
         fi
         curl -L "https://github.com/gohugoio/hugo/releases/download/{{.DOCS_VERSION}}/$ARCHIVE" | tar xz -C {{.DOCS_BIN}} {{.DOCS_BIN_NAME}}
-      - |
-        {
-          echo "version: {{.DOCS_VERSION}}"
-          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          echo "checksum: $(shasum -a 256 {{.DOCS_BIN_PATH}} | awk '{print $1}')"
-        } > {{.DOCS_BIN}}/.version
+      - '{{.DOCS_SYNC_CLI}} version-file {{.DOCS_BIN_PATH}} --version={{.DOCS_VERSION}}'
 
   # Service tasks
   deps:
@@ -122,7 +111,7 @@ tasks:
     cmds:
       - mkdir -p {{.STATIC_TASKFILES}}
       - |
-        for subsystem in arc docs gh grafana liftbridge nats pc service sync telegraf utm; do
+        for subsystem in arc docs gh grafana liftbridge nats pc service sync-cf sync-gh sync-git telegraf utm; do
           mkdir -p {{.STATIC_TASKFILES}}/$subsystem
           cp {{.ROOT_DIR}}/$subsystem/Taskfile.yml {{.STATIC_TASKFILES}}/$subsystem/
         done

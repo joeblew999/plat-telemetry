@@ -1,0 +1,106 @@
+version: '3'
+
+vars:
+  SYNC_CF_BIN_NAME: sync-cf
+  SYNC_CF_BIN: '{{.TASKFILE_DIR}}/.bin'
+  SYNC_CF_BIN_PATH: '{{.SYNC_CF_BIN}}/{{.SYNC_CF_BIN_NAME}}{{exeExt}}'
+  SYNC_CF_PORT: '{{.SYNC_CF_PORT | default "9092"}}'
+
+env:
+  GOWORK: off
+
+tasks:
+  # bin: tasks
+  bin:build:
+    desc: Build binary from source
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - mkdir -p {{.SYNC_CF_BIN}}
+      - go build -o {{.SYNC_CF_BIN_PATH}} .
+      - |
+        {
+          echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.SYNC_CF_BIN_PATH}} | awk '{print $1}')"
+        } > {{.SYNC_CF_BIN}}/.version
+    sources:
+      - '{{.TASKFILE_DIR}}/**/*.go'
+      - '{{.TASKFILE_DIR}}/go.mod'
+      - '{{.TASKFILE_DIR}}/go.sum'
+    generates:
+      - '{{.SYNC_CF_BIN_PATH}}'
+
+  # Service tasks (alphabetical)
+  config:port:
+    desc: Output configured port
+    cmds:
+      - echo "{{.SYNC_CF_PORT}}"
+    silent: true
+
+  config:version:
+    desc: Output version from .version file
+    cmds:
+      - cat {{.SYNC_CF_BIN}}/.version 2>/dev/null || echo "not built"
+    silent: true
+
+  deps:
+    desc: Download Go dependencies
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go mod download
+
+  ensure:
+    desc: Ensure binary exists
+    status:
+      - test -f {{.SYNC_CF_BIN_PATH}}
+    cmds:
+      - task: bin:build
+
+  health:
+    desc: Check service health
+    cmds:
+      - curl -sf http://localhost:{{.SYNC_CF_PORT}}/health > /dev/null
+
+  package:
+    desc: Package binary for release
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR}}'
+    cmds:
+      - tar -czvf {{.DIST}}/{{.SYNC_CF_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.SYNC_CF_BIN}} {{.SYNC_CF_BIN_NAME}}
+
+  run:
+    desc: Run webhook server
+    deps: [ensure]
+    cmds:
+      - '{{.SYNC_CF_BIN_PATH}} webhook {{.SYNC_CF_PORT}}'
+
+  run:poll:
+    desc: Run CF audit log polling
+    deps: [ensure]
+    cmds:
+      - '{{.SYNC_CF_BIN_PATH}} poll {{.SYNC_CF_POLL_INTERVAL | default "1m"}}'
+
+  run:tunnel:
+    desc: Run cloudflared quick tunnel
+    deps: [ensure]
+    cmds:
+      - '{{.SYNC_CF_BIN_PATH}} tunnel {{.SYNC_CF_PORT}}'
+
+  test:
+    desc: Run tests
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go test -v ./...
+
+  # clean: tasks (alphabetical)
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.SYNC_CF_BIN}}
+
+  clean:all:
+    desc: Clean everything
+    cmds:
+      - rm -rf {{.SYNC_CF_BIN}}

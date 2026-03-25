@@ -6,7 +6,7 @@ vars:
   NATS_VERSION: '{{.NATS_VERSION | default "v2.10.24"}}'
   NATS_SRC: '{{.TASKFILE_DIR}}/.src'
   NATS_BIN: '{{.TASKFILE_DIR}}/.bin'
-  NATS_BIN_PATH: '{{.NATS_BIN}}/{{.NATS_BIN_NAME}}'
+  NATS_BIN_PATH: '{{.NATS_BIN}}/{{.NATS_BIN_NAME}}{{exeExt}}'
   NATS_DATA: '{{.TASKFILE_DIR}}/.data'
   NATS_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 

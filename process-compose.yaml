@@ -4,10 +4,17 @@ version: "0.5"
 # Process Compose only orchestrates: process dependencies and restart policies
 # Commands call task <subsystem>:run (execute binary), probes call task <subsystem>:health (returns immediately)
 
+# Load environment variables from root .env file
+env_file:
+  - .env
+
 processes:
   arc:
     command: task arc:run
     working_dir: .
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
     availability:
       restart: on_failure
       backoff_seconds: 5
@@ -17,10 +24,30 @@ processes:
       initial_delay_seconds: 3
       period_seconds: 5
 
+  sync-cf-worker:
+    command: task sync-cf-worker:run
+    working_dir: .
+    environment:
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
+      - CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID}
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    readiness_probe:
+      exec:
+        command: task sync-cf-worker:health
+      initial_delay_seconds: 5
+      period_seconds: 10
 
-  hugo:
+  docs:
     command: task docs:run
     working_dir: .
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
     availability:
       restart: on_failure
       backoff_seconds: 5
@@ -37,7 +64,8 @@ processes:
       nats:
         condition: process_healthy
     shutdown:
-      timeout_seconds: 5
+      signal: 15
+      timeout_seconds: 10
     availability:
       restart: on_failure
       backoff_seconds: 3
@@ -51,7 +79,8 @@ processes:
     command: task nats:run
     working_dir: .
     shutdown:
-      timeout_seconds: 5
+      signal: 15
+      timeout_seconds: 10
     availability:
       restart: on_failure
       backoff_seconds: 3
@@ -61,43 +90,73 @@ processes:
       initial_delay_seconds: 2
       period_seconds: 5
 
-  # sync:
-  #   command: task sync:run
-  #   working_dir: .
-  #   availability:
-  #     restart: on_failure
-  #     backoff_seconds: 5
-  #   readiness_probe:
-  #     exec:
-  #       command: task sync:health
-  #     initial_delay_seconds: 3
-  #     period_seconds: 10
+  sync-cf:
+    command: task sync-cf:run
+    working_dir: .
+    environment:
+      - CF_ACCOUNT_ID=${CF_ACCOUNT_ID}
+      - CF_API_TOKEN=${CF_API_TOKEN}
+      - CF_WEBHOOK_SECRET=${CF_WEBHOOK_SECRET}
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    readiness_probe:
+      exec:
+        command: task sync-cf:health
+      initial_delay_seconds: 3
+      period_seconds: 10
 
-  # sync-poller:
-  #   command: task sync:poll
-  #   working_dir: .
-  #   environment:
-  #     - GITHUB_TOKEN=${GITHUB_TOKEN}
-  #   availability:
-  #     restart: on_failure
-  #     backoff_seconds: 5
-  #   readiness_probe:
-  #     exec:
-  #       command: task sync:health:poller
-  #     initial_delay_seconds: 3
-  #     period_seconds: 30
+  sync-gh:
+    command: task sync-gh:run
+    working_dir: .
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    readiness_probe:
+      exec:
+        command: task sync-gh:health
+      initial_delay_seconds: 3
+      period_seconds: 10
 
-  # sync-taskfile-poller:
-  #   command: task sync:poll:taskfiles
-  #   working_dir: .
-  #   availability:
-  #     restart: on_failure
-  #     backoff_seconds: 5
-  #   readiness_probe:
-  #     exec:
-  #       command: task sync:health:poller
-  #     initial_delay_seconds: 3
-  #     period_seconds: 30
+  sync-gh-poller:
+    command: task sync-gh:run:poll
+    working_dir: .
+    environment:
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    readiness_probe:
+      exec:
+        command: task sync-gh:health
+      initial_delay_seconds: 3
+      period_seconds: 30
+
+  sync-gh-taskfile-poller:
+    command: task sync-gh:run:poll-taskfiles
+    working_dir: .
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+    availability:
+      restart: on_failure
+      backoff_seconds: 5
+    readiness_probe:
+      exec:
+        command: task sync-gh:health
+      initial_delay_seconds: 3
+      period_seconds: 30
 
   telegraf:
     command: task telegraf:run
@@ -107,6 +166,9 @@ processes:
         condition: process_healthy
       liftbridge:
         condition: process_healthy
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
     availability:
       restart: on_failure
       backoff_seconds: 5

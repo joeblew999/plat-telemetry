@@ -1,0 +1,21 @@
+# Cloudflare Worker configuration
+# See: https://developers.cloudflare.com/workers/wrangler/configuration/
+
+name = "plat-event-aggregator"
+main = "./.bin/worker.mjs"
+compatibility_date = "2024-01-01"
+
+# Account ID - set via CLOUDFLARE_ACCOUNT_ID env var or uncomment:
+# account_id = "your-account-id"
+
+# Environment variables (secrets should use wrangler secret put)
+[vars]
+# SYNC_ENDPOINT = "https://your-tunnel.example.com/webhook/cf"
+
+# Production environment
+[env.production]
+# SYNC_ENDPOINT = "https://sync.your-domain.com/webhook/cf"
+
+# Build configuration - uses task for Go WASM build
+[build]
+command = "task bin:build"

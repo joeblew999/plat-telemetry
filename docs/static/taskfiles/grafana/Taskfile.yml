@@ -5,7 +5,7 @@ vars:
   GF_VERSION: '11.4.0'
   GF_DOWNLOAD_URL: 'https://dl.grafana.com/oss/release/grafana-{{.GF_VERSION}}.darwin-arm64.tar.gz'
   GF_BIN: '{{.TASKFILE_DIR}}/.bin'
-  GF_BIN_PATH: '{{.GF_BIN}}/bin/{{.GF_BIN_NAME}}'
+  GF_BIN_PATH: '{{.GF_BIN}}/bin/{{.GF_BIN_NAME}}{{exeExt}}'
   GF_DATA: '{{.TASKFILE_DIR}}/.data'
 
 tasks:
@@ -16,7 +16,7 @@ tasks:
       - mkdir -p {{.GF_BIN}}
       - curl -L {{.GF_DOWNLOAD_URL}} | tar xz --strip-components=1 -C {{.GF_BIN}}
       - xattr -r -d com.apple.quarantine {{.GF_BIN}}/ 2>/dev/null || true
-      - echo "{{.GF_VERSION}}" > {{.GF_BIN}}/.version
+      - 'echo "version{{":"}} {{.GF_VERSION}}" > {{.GF_BIN}}/.version'
     status:
       - test -f {{.GF_BIN_PATH}}
 
@@ -44,7 +44,7 @@ tasks:
     cmds:
       - mkdir -p {{.GF_BIN}}
       - curl -L https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}/grafana-{{.GOOS}}-{{.GOARCH}}.tar.gz | tar xz -C {{.GF_BIN}}
-      - echo "{{.RELEASE_VERSION}}" > {{.GF_BIN}}/.version
+      - 'echo "version{{":"}} {{.RELEASE_VERSION}}" > {{.GF_BIN}}/.version'
     status:
       - test -f {{.GF_BIN_PATH}}
 

@@ -1,0 +1,97 @@
+version: '3'
+
+vars:
+  SYNC_GIT_BIN_NAME: sync-git
+  SYNC_GIT_BIN: '{{.TASKFILE_DIR}}/.bin'
+  SYNC_GIT_BIN_PATH: '{{.SYNC_GIT_BIN}}/{{.SYNC_GIT_BIN_NAME}}{{exeExt}}'
+
+env:
+  GOWORK: off
+
+tasks:
+  # src: tasks (sync-git is in-repo code, no-ops for conformance)
+  src:clone:
+    desc: No-op (sync-git is in-repo code)
+    cmds:
+      - 'true'
+
+  src:update:
+    desc: No-op (sync-git is in-repo code)
+    cmds:
+      - 'true'
+
+  # bin: tasks
+  bin:build:
+    desc: Build sync-git binary from source
+    dir: '{{.TASKFILE_DIR}}'
+    sources:
+      - "**/*.go"
+      - go.mod
+      - go.sum
+    generates:
+      - "{{.SYNC_GIT_BIN_PATH}}"
+      - "{{.SYNC_GIT_BIN}}/.version"
+    cmds:
+      - mkdir -p {{.SYNC_GIT_BIN}}
+      - go build -o {{.SYNC_GIT_BIN_PATH}} .
+      - '{{.SYNC_GIT_BIN_PATH}} version-file {{.SYNC_GIT_BIN_PATH}} --src={{.ROOT_DIR}}'
+
+  bin:download:
+    desc: Download pre-built sync-git binary (USER)
+    vars:
+      RELEASE_REPO: '{{.RELEASE_REPO | default "joeblew999/plat-telemetry"}}'
+      RELEASE_VERSION: '{{.RELEASE_VERSION | default "latest"}}'
+    cmds:
+      - mkdir -p {{.SYNC_GIT_BIN}}
+      - |
+        gh release download {{.RELEASE_VERSION}} \
+          --repo {{.RELEASE_REPO}} \
+          --pattern "{{.SYNC_GIT_BIN_NAME}}-{{OS}}-{{ARCH}}.tar.gz" \
+          --output - | tar xz -C {{.SYNC_GIT_BIN}}
+      - chmod +x {{.SYNC_GIT_BIN_PATH}}
+
+  # Service tasks (alphabetical)
+  config:version:
+    desc: Output current version
+    deps: [ensure]
+    cmds:
+      - '{{.SYNC_GIT_BIN_PATH}} version-file {{.SYNC_GIT_BIN_PATH}} --read'
+    silent: true
+
+  deps:
+    desc: Download Go dependencies
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go mod download
+    status:
+      - test -f go.sum
+
+  ensure:
+    desc: Ensure binary exists (build from source)
+    status:
+      - test -f {{.SYNC_GIT_BIN_PATH}}
+    cmds:
+      - task: bin:build
+
+  package:
+    desc: Package sync-git binary for release
+    deps: [bin:build]
+    vars:
+      GOOS: '{{.GOOS | default OS}}'
+      GOARCH: '{{.GOARCH | default ARCH}}'
+      DIST: '{{.DIST | default .DIST_DIR | default "../.dist"}}'
+    cmds:
+      - mkdir -p {{.DIST}}
+      - tar czf {{.DIST}}/{{.SYNC_GIT_BIN_NAME}}-{{.GOOS}}-{{.GOARCH}}.tar.gz -C {{.SYNC_GIT_BIN}} {{.SYNC_GIT_BIN_NAME}} .version
+
+  test:
+    desc: Run unit tests
+    dir: '{{.TASKFILE_DIR}}'
+    cmds:
+      - go test -v ./...
+
+  # clean: tasks (alphabetical)
+  clean:
+    desc: Clean built binaries
+    cmds:
+      - rm -rf {{.SYNC_GIT_BIN}}

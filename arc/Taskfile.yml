@@ -6,7 +6,7 @@ vars:
   ARC_VERSION: '{{.ARC_VERSION | default "main"}}'
   ARC_SRC: '{{.TASKFILE_DIR}}/.src'
   ARC_BIN: '{{.TASKFILE_DIR}}/.bin'
-  ARC_BIN_PATH: '{{.ARC_BIN}}/{{.ARC_BIN_NAME}}'
+  ARC_BIN_PATH: '{{.ARC_BIN}}/{{.ARC_BIN_NAME}}{{exeExt}}'
   ARC_DATA: '{{.TASKFILE_DIR}}/.data'
   ARC_RELEASE_URL: https://github.com/{{.RELEASE_REPO}}/releases/download/{{.RELEASE_VERSION}}
 
