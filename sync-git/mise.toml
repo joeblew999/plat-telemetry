@@ -1,0 +1,86 @@
+[vars]
+bin_name = "sync-git"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/sync-git"
+release_repo = "joeblew999/plat-telemetry"
+release_version = "latest"
+release_url = "https://github.com/joeblew999/plat-telemetry/releases/download/latest"
+dist_dir = "{{config_root}}/../.dist"
+root_dir = "{{config_root}}/.."
+
+[env]
+GOWORK = "off"
+
+# --- src: tasks (sync-git is in-repo code, no-ops for conformance) ---
+
+[tasks."src:clone"]
+description = "No-op (sync-git is in-repo code)"
+run = "true"
+
+[tasks."src:update"]
+description = "No-op (sync-git is in-repo code)"
+run = "true"
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Build sync-git binary from source"
+dir = "{{config_root}}"
+run = """
+mkdir -p {{vars.bin}}
+go build -o {{vars.bin_path}} .
+{{vars.bin_path}} version-file {{vars.bin_path}} --src={{vars.root_dir}}
+"""
+
+[tasks."bin:download"]
+description = "Download pre-built sync-git binary (USER)"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+gh release download {{vars.release_version}} \
+  --repo {{vars.release_repo}} \
+  --pattern "{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz" \
+  --output - | tar xz -C {{vars.bin}}
+chmod +x {{vars.bin_path}}
+"""
+
+# --- service tasks (alphabetical) ---
+
+[tasks."config:version"]
+description = "Output current version"
+depends = ["ensure"]
+run = "{{vars.bin_path}} version-file {{vars.bin_path}} --read"
+quiet = true
+
+[tasks.deps]
+description = "Download Go dependencies"
+dir = "{{config_root}}"
+run = "test -f go.sum || go mod download"
+
+[tasks.ensure]
+description = "Ensure binary exists (build from source)"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:build"
+
+[tasks.package]
+description = "Package sync-git binary for release"
+depends = ["bin:build"]
+run = """
+GOOS=${GOOS:-$(go env GOOS)}
+GOARCH=${GOARCH:-$(go env GOARCH)}
+DIST=${DIST:-{{vars.dist_dir}}}
+mkdir -p ${DIST}
+tar czf ${DIST}/{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz -C {{vars.bin}} {{vars.bin_name}} .version
+"""
+
+[tasks.test]
+description = "Run unit tests"
+dir = "{{config_root}}"
+run = "go test -v ./..."
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean built binaries"
+run = "rm -rf {{vars.bin}}"

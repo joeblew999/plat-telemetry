@@ -1,0 +1,146 @@
+[vars]
+bin_name = "sync-gh"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/sync-gh"
+data = "{{config_root}}/.data"
+port = "9090"
+release_repo = "joeblew999/plat-telemetry"
+release_version = "latest"
+release_url = "https://github.com/joeblew999/plat-telemetry/releases/download/latest"
+dist_dir = "{{config_root}}/../.dist"
+sync_git_bin_path = "{{config_root}}/../sync-git/.bin/sync-git"
+root_dir = "{{config_root}}/.."
+
+[env]
+GOWORK = "off"
+
+# --- src: tasks (sync-gh is in-repo code, no-ops for conformance) ---
+
+[tasks."src:clone"]
+description = "No-op (sync-gh is in-repo code)"
+run = "true"
+
+[tasks."src:update"]
+description = "No-op (sync-gh is in-repo code)"
+run = "true"
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Build sync-gh binary from source"
+dir = "{{config_root}}"
+run = """
+test -f {{vars.sync_git_bin_path}} || { echo "sync-git binary not built — run: mise run -C {{vars.root_dir}}/sync-git bin:build"; exit 1; }
+mkdir -p {{vars.bin}}
+go build -o {{vars.bin_path}} .
+{{vars.sync_git_bin_path}} version-file {{vars.bin_path}} --src={{vars.root_dir}}
+"""
+
+[tasks."bin:download"]
+description = "Download pre-built sync-gh binary (USER)"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+gh release download {{vars.release_version}} \
+  --repo {{vars.release_repo}} \
+  --pattern "{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz" \
+  --output - | tar xz -C {{vars.bin}}
+chmod +x {{vars.bin_path}}
+"""
+
+# --- service tasks (alphabetical) ---
+
+[tasks."config:port"]
+description = "Output service port"
+run = "echo {{vars.port}}"
+quiet = true
+
+[tasks."config:version"]
+description = "Output current version"
+depends = ["ensure"]
+run = """
+test -f {{vars.sync_git_bin_path}} || { echo "sync-git binary not built — run: mise run -C {{vars.root_dir}}/sync-git bin:build"; exit 1; }
+{{vars.sync_git_bin_path}} version-file {{vars.bin_path}} --read
+"""
+quiet = true
+
+[tasks.deps]
+description = "Download Go dependencies"
+dir = "{{config_root}}"
+run = "test -f go.sum || go mod download"
+
+[tasks.ensure]
+description = "Ensure binary exists (build from source)"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:build"
+
+[tasks.health]
+description = "Check webhook server health"
+run = "curl -sf http://localhost:{{vars.port}}/health > /dev/null"
+
+[tasks.package]
+description = "Package sync-gh binary for release"
+depends = ["bin:build"]
+run = """
+GOOS=${GOOS:-$(go env GOOS)}
+GOARCH=${GOARCH:-$(go env GOARCH)}
+DIST=${DIST:-{{vars.dist_dir}}}
+mkdir -p ${DIST}
+tar czf ${DIST}/{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz -C {{vars.bin}} {{vars.bin_name}} .version
+"""
+
+[tasks.run]
+description = "Run webhook server"
+depends = ["ensure"]
+env = { PORT = "{{vars.port}}" }
+run = "{{vars.bin_path}} webhook"
+
+[tasks."run:poll"]
+description = "Run polling service for upstream repos"
+depends = ["ensure"]
+run = "{{vars.bin_path}} poll"
+
+[tasks."run:poll-taskfiles"]
+description = "Run Taskfile polling service for version changes"
+depends = ["ensure"]
+run = "{{vars.bin_path}} poll-taskfiles"
+
+[tasks.state]
+description = "Capture GitHub state (usage: REPO=owner/repo mise run state)"
+depends = ["ensure"]
+run = "{{vars.bin_path}} state ${REPO:-} --dir=${STATE_DIR:-{{vars.root_dir}}/.github/state}"
+
+[tasks."state:show"]
+description = "Show captured GitHub state"
+depends = ["ensure"]
+run = "{{vars.bin_path}} state --show --dir=${STATE_DIR:-{{vars.root_dir}}/.github/state}"
+
+[tasks.test]
+description = "Run unit tests"
+dir = "{{config_root}}"
+run = "go test -v ./..."
+
+[tasks.tunnel]
+description = "Forward smee.io webhooks to local (usage: SMEE_URL=https://smee.io/xxx mise run tunnel)"
+depends = ["ensure"]
+run = "{{vars.bin_path}} tunnel ${SMEE_URL:-new} ${TARGET:-http://localhost:9090/webhook}"
+
+[tasks."tunnel:setup"]
+description = "Create smee channel and configure GitHub webhook (usage: REPO=owner/repo mise run tunnel:setup)"
+depends = ["ensure"]
+run = "{{vars.bin_path}} tunnel-setup ${REPO:-joeblew999/plat-telemetry} --events=${EVENTS:-push,release,workflow_run,page_build,deployment_status}"
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean built binaries"
+run = "rm -rf {{vars.bin}}"
+
+[tasks."clean:all"]
+description = "Clean everything (binaries + data)"
+run = "rm -rf {{vars.bin}} {{vars.data}}"
+
+[tasks."clean:data"]
+description = "Clean runtime data"
+run = "rm -rf {{vars.data}}"

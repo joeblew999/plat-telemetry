@@ -1,0 +1,365 @@
+[vars]
+bin_name = "gh"
+upstream_repo = "https://github.com/cli/cli.git"
+version = "v2.83.2"
+src = "{{config_root}}/.src"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/gh"
+data = "{{config_root}}/.data"
+sync_cli = "{{config_root}}/../sync-git/.bin/sync-git"
+release_repo = "joeblew999/plat-telemetry"
+release_version = "latest"
+release_url = "https://github.com/joeblew999/plat-telemetry/releases/download/latest"
+dist_dir = "{{config_root}}/../.dist"
+
+[env]
+GOWORK = "off"
+
+# --- src: tasks ---
+
+[tasks."src:clone"]
+description = "Clone the upstream repository at pinned version"
+run = "test -d {{vars.src}} || {{vars.sync_cli}} clone {{vars.upstream_repo}} {{vars.src}} {{vars.version}}"
+
+[tasks."src:update"]
+description = "Fetch and checkout pinned version"
+depends = ["src:clone"]
+run = ["{{vars.sync_cli}} fetch {{vars.src}} --tags", "{{vars.sync_cli}} checkout {{vars.src}} {{vars.version}}"]
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Build gh binary"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+go build -o {{vars.bin_path}} ./cmd/gh
+{{vars.sync_cli}} version-file {{vars.bin_path}} --src={{vars.src}}
+"""
+
+[tasks."bin:download"]
+description = "Download pre-built binary from release"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+curl -L {{vars.release_url}}/{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz | tar xz -C {{vars.bin}}
+{{vars.sync_cli}} version-file {{vars.bin_path}} --version={{vars.release_version}}
+"""
+
+# --- dev: tasks ---
+
+[tasks."dev:run"]
+description = "Run gh from source (development mode)"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = ["mkdir -p {{vars.data}}", "go run ./cmd/gh"]
+
+# --- service tasks (alphabetical) ---
+
+[tasks."config:version"]
+description = "Output the pinned version"
+run = "echo {{vars.version}}"
+quiet = true
+
+[tasks.deps]
+description = "Download dependencies"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = "go mod download"
+
+[tasks.ensure]
+description = "Ensure binary exists (symlink system gh if available, else build from source)"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+if command -v gh >/dev/null 2>&1; then
+  ln -sf $(command -v gh) {{vars.bin_path}}
+  echo "Linked system gh: $(gh --version | head -1)"
+else
+  echo "No system gh found, building from source..."
+  mise run -C {{config_root}} bin:build
+fi
+"""
+
+[tasks.install]
+description = "Install gh binary"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = "go install ./cmd/gh"
+
+[tasks.package]
+description = "Package binary for release"
+run = """
+GOOS=${GOOS:-$(go env GOOS)}
+GOARCH=${GOARCH:-$(go env GOARCH)}
+DIST=${DIST:-{{vars.dist_dir}}}
+tar -czvf ${DIST}/{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz -C {{vars.bin}} {{vars.bin_name}}
+"""
+
+[tasks.test]
+description = "Run tests"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = "go test -v ./..."
+
+# --- workflow tasks ---
+
+[tasks."runs:list"]
+description = "List recent workflow runs"
+depends = ["ensure"]
+run = "{{vars.bin_path}} run list --repo {{vars.release_repo}} --limit 20"
+
+[tasks."runs:clean"]
+description = "Delete old workflow runs (keeps last 10, rate limited)"
+depends = ["ensure"]
+run = """
+KEEP=${KEEP:-10}
+REPO=${REPO:-{{vars.release_repo}}}
+
+echo "Fetching workflow runs for ${REPO}..."
+RUNS=$({{vars.bin_path}} run list --repo ${REPO} --limit 100 --json databaseId,status,conclusion,createdAt --jq '.[].databaseId')
+
+COUNT=0
+DELETED=0
+for RUN_ID in $RUNS; do
+  COUNT=$((COUNT + 1))
+  if [ $COUNT -le $KEEP ]; then
+    echo "Keeping run $RUN_ID (within last $KEEP)"
+    continue
+  fi
+
+  echo "Deleting run $RUN_ID..."
+  {{vars.bin_path}} run delete $RUN_ID --repo ${REPO} || true
+  DELETED=$((DELETED + 1))
+
+  if [ $((DELETED % 5)) -eq 0 ]; then
+    echo "Rate limiting (1s pause)..."
+    sleep 1
+  fi
+done
+
+echo "Deleted $DELETED runs, kept $KEEP"
+"""
+
+[tasks."runs:clean:all"]
+description = "Delete ALL workflow runs (use with caution)"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+
+echo "Deleting ALL workflow runs for ${REPO}..."
+RUNS=$({{vars.bin_path}} run list --repo ${REPO} --limit 500 --json databaseId --jq '.[].databaseId')
+
+DELETED=0
+for RUN_ID in $RUNS; do
+  echo "Deleting run $RUN_ID..."
+  {{vars.bin_path}} run delete $RUN_ID --repo ${REPO} || true
+  DELETED=$((DELETED + 1))
+
+  if [ $((DELETED % 5)) -eq 0 ]; then
+    echo "Rate limiting (1s pause)..."
+    sleep 1
+  fi
+done
+
+echo "Deleted $DELETED runs"
+"""
+
+# --- release management tasks ---
+
+[tasks."releases:list"]
+description = "List all releases"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+{{vars.bin_path}} release list --repo ${REPO}
+"""
+
+[tasks."releases:view"]
+description = "View a specific release (usage: REPO=... TAG=v1.0.0 mise run releases:view)"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+test -n "${TAG}" || { echo "TAG is required"; exit 1; }
+{{vars.bin_path}} release view ${TAG} --repo ${REPO}
+"""
+
+[tasks."releases:delete"]
+description = "Delete a release (usage: TAG=v1.0.0 mise run releases:delete)"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+test -n "${TAG}" || { echo "TAG is required"; exit 1; }
+{{vars.bin_path}} release delete ${TAG} --repo ${REPO} --yes --cleanup-tag
+"""
+
+[tasks."releases:clean"]
+description = "Delete old releases (keeps last N, rate limited)"
+depends = ["ensure"]
+run = """
+KEEP=${KEEP:-10}
+REPO=${REPO:-{{vars.release_repo}}}
+
+echo "Fetching releases for ${REPO}..."
+RELEASES=$({{vars.bin_path}} release list --repo ${REPO} --limit 100 --json tagName --jq '.[].tagName')
+
+COUNT=0
+DELETED=0
+for TAG in $RELEASES; do
+  COUNT=$((COUNT + 1))
+  if [ $COUNT -le $KEEP ]; then
+    echo "Keeping release $TAG (within last $KEEP)"
+    continue
+  fi
+
+  echo "Deleting release $TAG..."
+  {{vars.bin_path}} release delete "$TAG" --repo ${REPO} --yes --cleanup-tag || true
+  DELETED=$((DELETED + 1))
+
+  if [ $((DELETED % 5)) -eq 0 ]; then
+    echo "Rate limiting (1s pause)..."
+    sleep 1
+  fi
+done
+
+echo "Deleted $DELETED releases, kept $KEEP"
+"""
+
+[tasks."releases:clean:all"]
+description = "Delete ALL releases (use with caution)"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+
+echo "Deleting ALL releases for ${REPO}..."
+RELEASES=$({{vars.bin_path}} release list --repo ${REPO} --limit 500 --json tagName --jq '.[].tagName')
+
+DELETED=0
+for TAG in $RELEASES; do
+  echo "Deleting release $TAG..."
+  {{vars.bin_path}} release delete "$TAG" --repo ${REPO} --yes --cleanup-tag || true
+  DELETED=$((DELETED + 1))
+
+  if [ $((DELETED % 5)) -eq 0 ]; then
+    echo "Rate limiting (1s pause)..."
+    sleep 1
+  fi
+done
+
+echo "Deleted $DELETED releases"
+"""
+
+# --- pages management tasks ---
+
+[tasks."pages:status"]
+description = "Show GitHub Pages status"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+{{vars.bin_path}} api repos/${REPO}/pages --jq '{build_type: .build_type, branch: .source.branch, url: .html_url}'
+"""
+
+[tasks."pages:enable"]
+description = "Enable GitHub Pages with Actions"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+if {{vars.bin_path}} api repos/${REPO}/pages 2>/dev/null | grep -q '"build_type":"workflow"'; then
+  echo "GitHub Pages already enabled with Actions"
+else
+  echo "Enabling GitHub Pages..."
+  {{vars.bin_path}} api repos/${REPO}/pages -X POST -f build_type=workflow 2>/dev/null || \
+  {{vars.bin_path}} api repos/${REPO}/pages -X PUT -f build_type=workflow
+  echo "GitHub Pages enabled"
+fi
+"""
+
+[tasks."pages:disable"]
+description = "Disable GitHub Pages"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+{{vars.bin_path}} api repos/${REPO}/pages -X DELETE
+echo "GitHub Pages disabled"
+"""
+
+[tasks."pages:builds"]
+description = "List recent GitHub Pages builds"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+{{vars.bin_path}} api repos/${REPO}/pages/builds --jq '.[] | {status: .status, created_at: .created_at, duration: .duration}'
+"""
+
+[tasks."pages:deploy"]
+description = "Deploy docs to gh-pages branch (alternative to Actions)"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+DIST=${DIST:-docs/.dist}
+
+set -e
+echo "Deploying to gh-pages branch..."
+
+DEPLOY_DIR=$(mktemp -d)
+trap "rm -rf $DEPLOY_DIR" EXIT
+
+cp -r ${DIST}/* $DEPLOY_DIR/
+
+cd $DEPLOY_DIR
+git init
+git config user.name "GitHub Actions"
+git config user.email "actions@github.com"
+
+git add -A
+git commit -m "Deploy docs $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+git push -f https://github.com/${REPO}.git HEAD:gh-pages
+
+echo "Deployed to gh-pages branch"
+"""
+
+[tasks."pages:setup:branch"]
+description = "Configure Pages to deploy from gh-pages branch"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+echo "Configuring Pages to use gh-pages branch..."
+{{vars.bin_path}} api repos/${REPO}/pages -X PUT \
+  -f build_type=legacy \
+  -f 'source[branch]=gh-pages' \
+  -f 'source[path]=/'
+echo "Pages configured to deploy from gh-pages branch"
+"""
+
+[tasks."pages:setup:workflow"]
+description = "Configure Pages to deploy from Actions workflow"
+depends = ["ensure"]
+run = """
+REPO=${REPO:-{{vars.release_repo}}}
+echo "Configuring Pages to use Actions workflow..."
+{{vars.bin_path}} api repos/${REPO}/pages -X PUT -f build_type=workflow
+echo "Pages configured to deploy from Actions workflow"
+"""
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf {{vars.bin}}"
+
+[tasks."clean:all"]
+description = "Clean everything (.src, .bin, .data)"
+run = "rm -rf {{vars.src}} {{vars.bin}} {{vars.data}}"
+
+[tasks."clean:data"]
+description = "Clean data directory"
+run = "rm -rf {{vars.data}}"
+
+[tasks."clean:src"]
+description = "Clean source directory"
+run = "rm -rf {{vars.src}}"

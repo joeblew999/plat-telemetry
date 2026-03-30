@@ -1,0 +1,127 @@
+[vars]
+bin_name = "hugo"
+upstream_repo = "https://github.com/gohugoio/hugo.git"
+version = "v0.140.2"
+src = "{{config_root}}/.src"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/hugo"
+content = "{{config_root}}"
+dist = "{{config_root}}/.dist"
+data = "{{config_root}}/.data"
+port = "1313"
+health_path = "/plat-telemetry/"
+sync_cli = "{{config_root}}/../sync-git/.bin/sync-git"
+dist_dir = "{{config_root}}/../.dist"
+
+[env]
+GOWORK = "off"
+
+# --- src: tasks ---
+
+[tasks."src:clone"]
+description = "Clone Hugo upstream repository at pinned version"
+run = "test -d {{vars.src}} || {{vars.sync_cli}} clone {{vars.upstream_repo}} {{vars.src}} {{vars.version}}"
+
+[tasks."src:update"]
+description = "Fetch and checkout pinned version"
+depends = ["src:clone"]
+run = ["{{vars.sync_cli}} fetch {{vars.src}} --tags", "{{vars.sync_cli}} checkout {{vars.src}} {{vars.version}}"]
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Build Hugo binary from source"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+go build -tags extended -o {{vars.bin_path}} .
+{{vars.sync_cli}} version-file {{vars.bin_path}} --src={{vars.src}}
+"""
+
+[tasks."bin:download"]
+description = "Download pre-built Hugo binary from GitHub releases"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+VERSION_NUM=$(echo "{{vars.version}}" | sed 's/^v//')
+if [ "$GOOS" = "darwin" ]; then
+  ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-universal.tar.gz"
+else
+  ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.tar.gz"
+fi
+curl -L "https://github.com/gohugoio/hugo/releases/download/{{vars.version}}/$ARCHIVE" | tar xz -C {{vars.bin}} {{vars.bin_name}}
+{{vars.sync_cli}} version-file {{vars.bin_path}} --version={{vars.version}}
+"""
+
+# --- service tasks (alphabetical) ---
+
+[tasks.build]
+description = "Build Hugo static site"
+depends = ["ensure", "taskfiles:copy"]
+run = "{{vars.bin_path}} --minify -s {{vars.content}} -d {{vars.dist}}"
+
+[tasks.deps]
+description = "No dependencies for Hugo docs"
+run = "echo 'Hugo docs have no dependencies'"
+
+[tasks.ensure]
+description = "Ensure Hugo binary exists (download if missing)"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:download"
+
+[tasks.health]
+description = "Check if Hugo server is healthy"
+run = "curl -sf http://localhost:{{vars.port}}{{vars.health_path}} > /dev/null"
+
+[tasks.new]
+description = "Create new content (usage: PAGE=architecture/new-page mise run new)"
+run = "cd {{vars.content}} && {{vars.bin_path}} new content/${PAGE:-posts/new-post}.md"
+depends = ["ensure"]
+
+[tasks.run]
+description = "Run Hugo dev server (long-running service with hot reload)"
+depends = ["ensure"]
+run = "{{vars.bin_path}} server -D --bind 0.0.0.0 --port {{vars.port}} -s {{vars.content}}"
+
+[tasks."taskfiles:copy"]
+description = "Copy subsystem Taskfiles to static for remote include"
+run = """
+STATIC_TASKFILES="{{vars.content}}/static/taskfiles"
+ROOT_DIR="{{config_root}}/.."
+mkdir -p "$STATIC_TASKFILES"
+for subsystem in arc docs gh grafana liftbridge nats pc service sync-cf sync-gh sync-git telegraf utm; do
+  mkdir -p "$STATIC_TASKFILES/$subsystem"
+  cp "$ROOT_DIR/$subsystem/Taskfile.yml" "$STATIC_TASKFILES/$subsystem/"
+done
+echo "Taskfiles copied to $STATIC_TASKFILES"
+"""
+
+[tasks.test]
+description = "Check Hugo build works"
+depends = ["ensure"]
+run = "{{vars.bin_path}} --minify -s {{vars.content}} -d {{vars.dist}}"
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean build artifacts (site output)"
+run = "rm -rf {{vars.dist}}"
+
+[tasks."clean:all"]
+description = "Clean everything (.src, .bin, .dist, .data)"
+run = "rm -rf {{vars.src}} {{vars.bin}} {{vars.dist}} {{vars.data}} {{vars.content}}/.hugo_build.lock"
+
+[tasks."clean:bin"]
+description = "Clean Hugo binary"
+run = "rm -rf {{vars.bin}}"
+
+[tasks."clean:data"]
+description = "Clean data directory"
+run = "rm -rf {{vars.data}}"
+
+[tasks."clean:src"]
+description = "Clean Hugo source"
+run = "rm -rf {{vars.src}}"

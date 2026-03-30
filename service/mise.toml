@@ -1,0 +1,56 @@
+[vars]
+bin_name = "plat-telemetry-svc"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/plat-telemetry-svc"
+sync_cli = "{{config_root}}/../sync-git/.bin/sync-git"
+
+[env]
+GOWORK = "off"
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Build service binary"
+dir = "{{config_root}}"
+run = """
+mkdir -p {{vars.bin}}
+go build -o {{vars.bin_path}} .
+{{vars.sync_cli}} version-file {{vars.bin_path}} --src={{config_root}}/..
+"""
+
+# --- service tasks (alphabetical) ---
+
+[tasks.ensure]
+description = "Ensure service binary exists"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:build"
+
+[tasks.install]
+description = "Install as system service (launchd/systemd)"
+depends = ["ensure"]
+run = "{{vars.bin_path}} install"
+
+[tasks.start]
+description = "Start the system service"
+depends = ["ensure"]
+run = "{{vars.bin_path}} start"
+
+[tasks.status]
+description = "Check service status"
+depends = ["ensure"]
+run = "{{vars.bin_path}} status"
+
+[tasks.stop]
+description = "Stop the system service"
+depends = ["ensure"]
+run = "{{vars.bin_path}} stop"
+
+[tasks.uninstall]
+description = "Uninstall system service"
+depends = ["ensure"]
+run = "{{vars.bin_path}} uninstall"
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf {{vars.bin}}"

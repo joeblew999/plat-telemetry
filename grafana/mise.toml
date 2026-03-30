@@ -1,0 +1,110 @@
+[vars]
+bin_name = "grafana-server"
+version = "11.4.0"
+download_url = "https://dl.grafana.com/oss/release/grafana-11.4.0.darwin-arm64.tar.gz"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/bin/grafana-server"
+data = "{{config_root}}/.data"
+release_repo = "joeblew999/plat-telemetry"
+release_version = "latest"
+dist_dir = "{{config_root}}/../.dist"
+
+# --- src: tasks ---
+
+[tasks."src:clone"]
+description = "Download Grafana release"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+curl -L {{vars.download_url}} | tar xz --strip-components=1 -C {{vars.bin}}
+xattr -r -d com.apple.quarantine {{vars.bin}}/ 2>/dev/null || true
+echo "version: {{vars.version}}" > {{vars.bin}}/.version
+"""
+
+[tasks."src:update"]
+description = "Re-download Grafana (update version var first)"
+run = ["rm -rf {{vars.bin}}", "mise run -C {{config_root}} src:clone"]
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Grafana is pre-built (no-op)"
+run = """
+test -f {{vars.bin_path}} && exit 0
+echo "Grafana is pre-built, nothing to compile"
+"""
+
+[tasks."bin:download"]
+description = "Download Grafana release from our releases"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+curl -L https://github.com/{{vars.release_repo}}/releases/download/{{vars.release_version}}/grafana-${GOOS}-${GOARCH}.tar.gz | tar xz -C {{vars.bin}}
+echo "version: {{vars.release_version}}" > {{vars.bin}}/.version
+"""
+
+# --- service tasks (alphabetical) ---
+
+[tasks.deps]
+description = "No dependencies for Grafana binary"
+run = "echo 'Grafana is pre-built, no dependencies to download'"
+
+[tasks.ensure]
+description = "Ensure binary exists (download if needed)"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:download"
+
+[tasks.health]
+description = "Check if Grafana is healthy"
+run = "curl -sf http://localhost:3000/api/health > /dev/null"
+
+[tasks.install]
+description = "Install Grafana plugins"
+run = """
+test -f {{vars.bin}}/bin/grafana-cli || { echo "grafana-cli not found"; exit 1; }
+{{vars.bin}}/bin/grafana-cli --pluginsDir={{vars.data}}/plugins plugins install grafana-clock-panel
+"""
+
+[tasks.run]
+description = "Run Grafana server binary"
+depends = ["ensure"]
+dir = "{{config_root}}"
+run = """
+mkdir -p {{vars.data}}/plugins
+mkdir -p {{vars.data}}/provisioning/dashboards
+mkdir -p {{vars.data}}/provisioning/datasources
+{{vars.bin_path}} --homepath={{vars.bin}} --config={{config_root}}/grafana.ini cfg:default.paths.data={{vars.data}} cfg:default.paths.plugins={{vars.data}}/plugins cfg:default.paths.provisioning={{vars.data}}/provisioning
+"""
+
+[tasks.test]
+description = "Validate Grafana binary works"
+depends = ["ensure"]
+run = "{{vars.bin_path}} --version"
+
+[tasks.package]
+description = "Package Grafana for release"
+run = """
+GOOS=${GOOS:-$(go env GOOS)}
+GOARCH=${GOARCH:-$(go env GOARCH)}
+DIST=${DIST:-{{vars.dist_dir}}}
+tar -czvf ${DIST}/grafana-${GOOS}-${GOARCH}.tar.gz -C {{vars.bin}} .
+"""
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf {{vars.bin}}"
+
+[tasks."clean:all"]
+description = "Clean everything (.bin, .data)"
+run = "rm -rf {{vars.bin}} {{vars.data}}"
+
+[tasks."clean:data"]
+description = "Clean data directory"
+run = "rm -rf {{vars.data}}"
+
+[tasks."clean:src"]
+description = "Clean source directory"
+run = "rm -rf {{vars.bin}}"
