@@ -447,6 +447,7 @@ tasks:
   ci:pages:deploy:
     desc: CI pages deploy - push docs to gh-pages branch (replaces Actions)
     cmds:
+      - task: sync-git:bin:build
       - echo "▶ Deploying docs to gh-pages branch..."
       - task: docs:build
       - task: gh:pages:deploy
