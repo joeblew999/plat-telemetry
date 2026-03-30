@@ -71,19 +71,16 @@ jobs:
         shell: bash
 
       - name: Start services
-        run: mise run start
+        run: mise run ci:start
         shell: bash
 
       - name: Health check
-        run: |
-          sleep 5
-          mise run status
-          mise run nats:health
+        run: mise run ci:health
         shell: bash
 
       - name: Stop services
         if: always()
-        run: mise run stop
+        run: mise run ci:stop
         shell: bash
 
       - name: Release
