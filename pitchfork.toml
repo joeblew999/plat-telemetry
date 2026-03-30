@@ -1,0 +1,72 @@
+# Pitchfork daemon orchestration (replaces process-compose.yaml)
+# All daemons use mise integration for tool management and environment.
+# Commands delegate to mise tasks; pitchfork only orchestrates.
+
+[settings.general]
+mise = true
+
+[daemons.nats]
+run = "mise run nats:run"
+ready_http = "http://localhost:8222/healthz"
+retry = true
+auto = ["start", "stop"]
+
+[daemons.liftbridge]
+run = "mise run liftbridge:run"
+depends = ["nats"]
+ready_port = 9292
+retry = true
+auto = ["start", "stop"]
+
+[daemons.arc]
+run = "mise run arc:run"
+ready_http = "http://localhost:8000/health"
+retry = true
+auto = ["start", "stop"]
+
+[daemons.telegraf]
+run = "mise run telegraf:run"
+depends = ["arc", "liftbridge"]
+ready_delay = 3
+retry = true
+auto = ["start", "stop"]
+
+[daemons.docs]
+run = "mise run docs:run"
+ready_http = "http://localhost:1313/plat-telemetry/"
+retry = true
+auto = ["start", "stop"]
+
+[daemons.sync-cf]
+run = "mise run sync-cf:run"
+env = { CF_ACCOUNT_ID = "${CF_ACCOUNT_ID}", CF_API_TOKEN = "${CF_API_TOKEN}", CF_WEBHOOK_SECRET = "${CF_WEBHOOK_SECRET}" }
+ready_http = "http://localhost:9092/health"
+retry = true
+auto = ["start", "stop"]
+
+[daemons.sync-cf-worker]
+run = "mise run sync-cf-worker:run"
+env = { CLOUDFLARE_API_TOKEN = "${CLOUDFLARE_API_TOKEN}", CLOUDFLARE_ACCOUNT_ID = "${CLOUDFLARE_ACCOUNT_ID}" }
+ready_http = "http://localhost:8787/health"
+retry = true
+auto = ["start", "stop"]
+
+[daemons.sync-gh]
+run = "mise run sync-gh:run"
+env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
+ready_http = "http://localhost:9090/health"
+retry = true
+auto = ["start", "stop"]
+
+[daemons.sync-gh-poller]
+run = "mise run sync-gh:run:poll"
+env = { GITHUB_TOKEN = "${GITHUB_TOKEN}" }
+ready_delay = 3
+retry = true
+auto = ["start", "stop"]
+
+[daemons.sync-gh-taskfile-poller]
+run = "mise run sync-gh:run:poll-taskfiles"
+ready_delay = 3
+retry = true
+auto = ["start", "stop"]

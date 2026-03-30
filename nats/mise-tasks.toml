@@ -1,0 +1,126 @@
+# NATS is installed via mise ubi (nats-io/nats-server).
+# The nats-server binary is on PATH after `mise install`.
+# Source tasks are kept for dev workflow (build from source).
+
+["nats:src:clone"]
+description = "Clone upstream NATS repository"
+run = """
+[ -d nats/.src ] && exit 0
+git clone --branch "${NATS_VERSION:-v2.10.24}" --depth 1 https://github.com/nats-io/nats-server.git nats/.src
+"""
+
+["nats:src:update"]
+description = "Fetch and checkout pinned version"
+depends = ["nats:src:clone"]
+dir = "nats/.src"
+run = """
+git fetch --tags
+git checkout "${NATS_VERSION:-v2.10.24}"
+"""
+
+["nats:bin:build"]
+description = "Build nats-server from source (dev mode)"
+depends = ["nats:src:clone"]
+dir = "nats/.src"
+env = { GOWORK = "off" }
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+[ -f ../.bin/nats-server ] && exit 0
+mkdir -p ../.bin
+go build -o ../.bin/nats-server .
+{
+  echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(sha256sum ../.bin/nats-server 2>/dev/null || shasum -a 256 ../.bin/nats-server | awk '{print $1}')"
+} > ../.bin/.version
+"""
+
+["nats:ensure"]
+description = "Ensure nats-server is available (mise-managed)"
+run = """
+command -v nats-server >/dev/null 2>&1 && exit 0
+[ -f nats/.bin/nats-server ] && exit 0
+echo "nats-server not found. Run: mise install"
+exit 1
+"""
+
+["nats:run"]
+description = "Run nats-server"
+depends = ["nats:ensure"]
+run = """
+mkdir -p nats/.data
+nats-server --config nats/nats.conf
+"""
+
+["nats:health"]
+description = "Check NATS health"
+run = "curl -sf http://localhost:8222/healthz > /dev/null"
+
+["nats:dev:run"]
+description = "Run nats from source (development)"
+depends = ["nats:src:clone"]
+dir = "nats/.src"
+env = { GOWORK = "off" }
+run = """
+mkdir -p ../.data
+go run . --config ../nats.conf
+"""
+
+["nats:config:version"]
+description = "Output pinned version"
+run = 'echo "${NATS_VERSION:-v2.10.24}"'
+
+["nats:deps"]
+description = "Download Go dependencies"
+depends = ["nats:src:clone"]
+dir = "nats/.src"
+env = { GOWORK = "off" }
+run = "go mod download"
+
+["nats:test"]
+description = "Run NATS tests"
+depends = ["nats:src:clone"]
+dir = "nats/.src"
+env = { GOWORK = "off" }
+run = "go test -v ./..."
+
+["nats:package"]
+description = "Package nats-server for release"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+GOOS="${GOOS:-$(go env GOOS)}"
+GOARCH="${GOARCH:-$(go env GOARCH)}"
+DIST="${DIST:-$DIST_DIR}"
+mkdir -p "$DIST"
+# Prefer mise-managed binary, fall back to local build
+if command -v nats-server >/dev/null 2>&1; then
+  BIN_PATH="$(command -v nats-server)"
+elif [ -f nats/.bin/nats-server ]; then
+  BIN_PATH="nats/.bin/nats-server"
+else
+  echo "nats-server not found"
+  exit 1
+fi
+TMPDIR=$(mktemp -d)
+cp "$BIN_PATH" "$TMPDIR/nats-server"
+tar -czvf "$DIST/nats-server-${GOOS}-${GOARCH}.tar.gz" -C "$TMPDIR" nats-server
+rm -rf "$TMPDIR"
+"""
+
+["nats:clean"]
+description = "Clean build artifacts"
+run = "rm -rf nats/.bin"
+
+["nats:clean:all"]
+description = "Clean everything"
+run = "rm -rf nats/.src nats/.bin nats/.data"
+
+["nats:clean:data"]
+description = "Clean data directory"
+run = "rm -rf nats/.data"
+
+["nats:clean:src"]
+description = "Clean source directory"
+run = "rm -rf nats/.src"

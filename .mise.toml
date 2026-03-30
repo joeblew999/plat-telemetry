@@ -1,3 +1,538 @@
+min_version = "2025.1.0"
+
 [tools]
 go = "1.26.1"
-task = "3.49.1"
+"ubi:jdx/pitchfork" = "latest"
+"ubi:cli/cli" = "2.83.2"
+"ubi:nats-io/nats-server" = "2.10.24"
+
+[env]
+GOWORK = "off"
+RELEASE_REPO = "joeblew999/plat-telemetry"
+RELEASE_VERSION = "latest"
+DIST_DIR = "{{config_root}}/.dist"
+SUBSYSTEMS_BUILD = "arc docs liftbridge nats telegraf"
+SUBSYSTEMS_RELEASE = "arc liftbridge nats sync-cf sync-gh sync-git telegraf"
+SUBSYSTEMS_CI = { value = "nats", tools = true }
+# Subsystem versions
+NATS_VERSION = "v2.10.24"
+ARC_VERSION = "main"
+LB_VERSION = "master"
+TG_VERSION = "master"
+DOCS_VERSION = "v0.140.2"
+_.file = [".env"]
+
+# ── Prepare (auto-install deps when lockfiles change) ────────────────────────
+
+[prepare.go]
+# Built-in Go provider: runs `go mod download` when go.sum changes
+
+[prepare.sync-git]
+sources = ["sync-git/**/*.go", "sync-git/go.mod"]
+outputs = ["sync-git/.bin/sync-git"]
+run = "mise run sync-git:bin:build"
+auto = true
+
+[prepare.sync-gh]
+sources = ["sync-gh/**/*.go", "sync-gh/go.mod"]
+outputs = ["sync-gh/.bin/sync-gh"]
+run = "mise run sync-gh:bin:build"
+depends = ["sync-git"]
+auto = true
+
+[prepare.sync-cf]
+sources = ["sync-cf/**/*.go", "sync-cf/go.mod"]
+outputs = ["sync-cf/.bin/sync-cf"]
+run = "mise run sync-cf:bin:build"
+auto = true
+
+[task_config]
+includes = [
+  "arc/mise-tasks.toml",
+  "docs/mise-tasks.toml",
+  "gh/mise-tasks.toml",
+  "liftbridge/mise-tasks.toml",
+  "nats/mise-tasks.toml",
+  "service/mise-tasks.toml",
+  "sync-cf/mise-tasks.toml",
+  "sync-cf-worker/mise-tasks.toml",
+  "sync-gh/mise-tasks.toml",
+  "sync-git/mise-tasks.toml",
+  "telegraf/mise-tasks.toml",
+]
+
+# ── Root tasks ────────────────────────────────────────────────────────────────
+
+[tasks.default]
+description = "Show available tasks"
+run = "mise tasks"
+
+# ── Source management ─────────────────────────────────────────────────────────
+
+[tasks."src:clone"]
+description = "Clone all subsystem repositories"
+depends = [
+  "arc:src:clone",
+  "liftbridge:src:clone",
+  "nats:src:clone",
+  "telegraf:src:clone",
+]
+
+[tasks."src:update"]
+description = "Update all subsystem repositories"
+depends = [
+  "arc:src:update",
+  "liftbridge:src:update",
+  "nats:src:update",
+  "telegraf:src:update",
+]
+
+# ── Binary management ─────────────────────────────────────────────────────────
+
+[tasks."bin:build"]
+description = "Build all subsystems from source"
+depends = [
+  "arc:bin:build",
+  "docs:bin:build",
+  "liftbridge:bin:build",
+  "nats:bin:build",
+  "telegraf:bin:build",
+]
+
+[tasks."bin:build:one"]
+description = "Build a single subsystem (usage: mise run bin:build:one nats)"
+usage = 'arg "subsystem" help="Subsystem to build" default="nats"'
+run = "mise run ${usage_subsystem}:bin:build"
+
+[tasks."bin:verify"]
+description = "Verify all binary versions and checksums"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "=== Binary Version Verification ==="
+ERRORS=0
+
+declare -A BINARIES
+BINARIES[arc]="arc"
+BINARIES[liftbridge]="liftbridge"
+BINARIES[telegraf]="telegraf"
+
+for subsystem in arc liftbridge telegraf; do
+  BINARY_NAME="${BINARIES[$subsystem]}"
+  BINARY_PATH="$subsystem/.bin/$BINARY_NAME"
+  if [ ! -f "$BINARY_PATH" ]; then
+    echo "FAIL $subsystem: Binary not found at $BINARY_PATH"
+    ERRORS=$((ERRORS + 1))
+    continue
+  fi
+  if [ ! -f "$subsystem/.bin/.version" ]; then
+    echo "FAIL $subsystem: No .version file"
+    ERRORS=$((ERRORS + 1))
+    continue
+  fi
+  RECORDED_CHECKSUM=$(grep "^checksum:" "$subsystem/.bin/.version" | awk '{print $2}')
+  ACTUAL_CHECKSUM=$(sha256sum "$BINARY_PATH" 2>/dev/null || shasum -a 256 "$BINARY_PATH" | awk '{print $1}')
+  if [ "$RECORDED_CHECKSUM" != "$ACTUAL_CHECKSUM" ]; then
+    echo "FAIL $subsystem: Checksum mismatch!"
+    ERRORS=$((ERRORS + 1))
+    continue
+  fi
+  echo "OK $subsystem: checksum verified"
+done
+
+# Check mise-managed tools
+for tool in nats-server gh; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    echo "OK $tool: available on PATH (mise-managed)"
+  else
+    echo "FAIL $tool: not found on PATH"
+    ERRORS=$((ERRORS + 1))
+  fi
+done
+
+if [ $ERRORS -gt 0 ]; then
+  echo ""
+  echo "FAIL $ERRORS issues found"
+  exit 1
+else
+  echo ""
+  echo "OK All binaries verified"
+fi
+"""
+
+[tasks."bin:versions"]
+description = "Show all binary versions"
+run = """
+#!/usr/bin/env bash
+echo "=== Binary Versions ==="
+echo ""
+echo "--- mise-managed tools ---"
+echo "nats-server: $(nats-server --version 2>/dev/null || echo 'not installed')"
+echo "gh: $(gh --version 2>/dev/null | head -1 || echo 'not installed')"
+echo ""
+for subsystem in arc liftbridge telegraf; do
+  echo "--- $subsystem ---"
+  if [ -f "$subsystem/.bin/.version" ]; then
+    cat "$subsystem/.bin/.version"
+  else
+    echo "No version file"
+  fi
+  echo ""
+done
+"""
+
+# ── Process management (pitchfork) ───────────────────────────────────────────
+
+[tasks.start]
+description = "Start all services with pitchfork"
+run = "pitchfork start --all"
+
+[tasks."start:fg"]
+description = "Start all services in foreground"
+run = "pitchfork start --all"
+
+[tasks.stop]
+description = "Stop all services"
+run = "pitchfork stop --all"
+
+[tasks.status]
+description = "Show status of all processes"
+run = "pitchfork list"
+
+[tasks.logs]
+description = "Tail logs for a process"
+usage = 'arg "proc" help="Process name" default="nats"'
+run = "pitchfork logs ${usage_proc} --tail"
+
+[tasks.tui]
+description = "Open pitchfork TUI"
+run = "pitchfork tui"
+
+[tasks.reload]
+description = "Reload a service after binary update"
+usage = 'arg "proc" help="Process to reload" default="nats"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+pitchfork stop "${usage_proc}"
+sleep 2
+pitchfork start "${usage_proc}"
+"""
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+
+[tasks.test]
+description = "Run tests for all subsystems"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+for subsystem in arc liftbridge nats telegraf; do
+  echo "--- Testing $subsystem ---"
+  mise run "$subsystem:test" || true
+done
+"""
+
+[tasks.deps]
+description = "Download dependencies for all subsystems"
+depends = [
+  "arc:deps",
+  "liftbridge:deps",
+  "nats:deps",
+  "telegraf:deps",
+]
+
+# ── Clean ─────────────────────────────────────────────────────────────────────
+
+[tasks.clean]
+description = "Clean all build artifacts"
+run = """
+#!/usr/bin/env bash
+for subsystem in arc liftbridge nats telegraf; do
+  mise run "$subsystem:clean" || true
+done
+"""
+
+[tasks."clean:data"]
+description = "Clean all data directories"
+run = """
+#!/usr/bin/env bash
+for subsystem in arc liftbridge nats telegraf; do
+  mise run "$subsystem:clean:data" || true
+done
+"""
+
+[tasks."clean:src"]
+description = "Clean all source directories"
+run = """
+#!/usr/bin/env bash
+for subsystem in arc liftbridge nats telegraf; do
+  mise run "$subsystem:clean:src" || true
+done
+"""
+
+[tasks."clean:all"]
+description = "Clean everything (.src, .bin, .data)"
+run = """
+#!/usr/bin/env bash
+for subsystem in arc liftbridge nats telegraf; do
+  mise run "$subsystem:clean:all" || true
+done
+"""
+
+# ── Package & Release ─────────────────────────────────────────────────────────
+
+[tasks.package]
+description = "Package all binaries for release"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+GOOS="${GOOS:-$(go env GOOS)}"
+GOARCH="${GOARCH:-$(go env GOARCH)}"
+DIST="${DIST:-$DIST_DIR}"
+mkdir -p "$DIST"
+for subsystem in arc liftbridge nats sync-cf sync-gh sync-git telegraf; do
+  echo "Packaging $subsystem..."
+  GOOS="$GOOS" GOARCH="$GOARCH" DIST="$DIST" mise run "$subsystem:package" || true
+done
+"""
+
+[tasks."release:binary"]
+description = "Release subsystem binary"
+usage = 'arg "subsystem" help="Subsystem to release"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+SUBSYSTEM="${usage_subsystem}"
+[ -z "$SUBSYSTEM" ] && echo "SUBSYSTEM required" && exit 1
+mise run "$SUBSYSTEM:package"
+VERSION=$(mise run "$SUBSYSTEM:config:version" 2>/dev/null || echo "latest")
+RELEASE_TAG="${SUBSYSTEM}-${VERSION}"
+GOOS="$(go env GOOS)"
+GOARCH="$(go env GOARCH)"
+gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1 || \
+  gh release create "$RELEASE_TAG" --repo "$RELEASE_REPO" --title "$SUBSYSTEM $VERSION" --notes "Binary release for $SUBSYSTEM $VERSION"
+gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPO" "$DIST_DIR"/${SUBSYSTEM}*-${GOOS}-${GOARCH}.tar.gz --clobber || \
+  gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPO" "$DIST_DIR"/*-${GOOS}-${GOARCH}.tar.gz --clobber
+"""
+
+[tasks."release:all"]
+description = "Release all subsystem binaries"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+for subsystem in arc liftbridge nats sync-cf sync-gh sync-git telegraf; do
+  mise run release:binary "$subsystem"
+done
+"""
+
+# ── CI ────────────────────────────────────────────────────────────────────────
+
+[tasks.ci]
+description = "Main CI entry point"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mise run ci:build
+mise run ci:test
+mise run ci:package
+mise run ci:release
+mise run ci:pages
+"""
+
+[tasks."ci:build"]
+description = "CI build step"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mise run sync-git:bin:build
+for subsystem in $SUBSYSTEMS_CI; do
+  echo "Building $subsystem..."
+  mise run "$subsystem:bin:build" || mise run "$subsystem:ensure"
+done
+mise run ci:verify
+"""
+
+[tasks."ci:verify"]
+description = "Verify CI subsystem binaries exist"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "=== CI Binary Verification ==="
+ERRORS=0
+for subsystem in $SUBSYSTEMS_CI; do
+  BINARY_PATH="$subsystem/.bin"
+  if [ ! -d "$BINARY_PATH" ]; then
+    # Check if it's a mise-managed tool
+    BIN_NAME="$subsystem"
+    case "$subsystem" in
+      nats) BIN_NAME="nats-server" ;;
+    esac
+    if command -v "$BIN_NAME" >/dev/null 2>&1; then
+      echo "OK $subsystem: available on PATH (mise-managed)"
+      continue
+    fi
+    echo "FAIL $subsystem: Binary not found"
+    ERRORS=$((ERRORS + 1))
+    continue
+  fi
+  echo "OK $subsystem: binary exists"
+done
+if [ $ERRORS -gt 0 ]; then
+  echo "FAIL $ERRORS subsystems have issues"
+  exit 1
+fi
+echo "OK All CI binaries verified"
+"""
+
+[tasks."ci:test"]
+description = "CI test step"
+run = 'echo "CI tests skipped (requires full service stack)"'
+
+[tasks."ci:package"]
+description = "CI package step"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "$DIST_DIR"
+for subsystem in $SUBSYSTEMS_CI; do
+  mise run "$subsystem:package" || true
+done
+"""
+
+[tasks."ci:pages"]
+description = "CI pages step - build docs"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "Building docs for GitHub Pages..."
+mise run docs:build
+echo "OK Docs built"
+"""
+
+[tasks."ci:pages:deploy"]
+description = "Deploy docs to gh-pages branch"
+depends = ["sync-git:bin:build"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "Deploying docs to gh-pages branch..."
+mise run docs:build
+mise run gh:pages:deploy
+echo "OK Docs deployed"
+"""
+
+[tasks."ci:sync"]
+description = "Capture GitHub state (cron job)"
+depends = ["sync-gh:ensure"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+sync-gh/.bin/sync-gh state "$GITHUB_REPOSITORY" --dir=.github/state
+git config user.name "github-actions[bot]"
+git config user.email "github-actions[bot]@users.noreply.github.com"
+git add .github/state/
+if git diff --staged --quiet; then
+  echo "No state changes"
+else
+  git commit -m "chore: sync GitHub state [skip ci]"
+  git push
+  echo "OK State committed and pushed"
+fi
+"""
+
+[tasks."ci:release"]
+description = "Upload CI subsystem binaries to GitHub releases"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+for subsystem in $SUBSYSTEMS_CI; do
+  mise run release:binary "$subsystem" || true
+done
+"""
+
+[tasks."ci:dist"]
+description = "Output DIST_DIR for CI"
+run = 'echo "$DIST_DIR"'
+
+# ── Manifest ──────────────────────────────────────────────────────────────────
+
+[tasks.manifest]
+description = "Show pinned versions vs installed versions"
+run = """
+#!/usr/bin/env bash
+echo "=== Subsystem Versions ==="
+echo ""
+echo "SUBSYSTEM     PINNED       INSTALLED"
+echo "---------     ------       ---------"
+echo "nats          ${NATS_VERSION}    $(nats-server --version 2>/dev/null || echo '-')"
+echo "liftbridge    ${LB_VERSION}     $([ -f liftbridge/.bin/.version ] && head -1 liftbridge/.bin/.version || echo '-')"
+echo "arc           ${ARC_VERSION}         $([ -f arc/.bin/.version ] && head -1 arc/.bin/.version || echo '-')"
+echo "telegraf      ${TG_VERSION}       $([ -f telegraf/.bin/.version ] && head -1 telegraf/.bin/.version || echo '-')"
+echo "gh            $(gh --version 2>/dev/null | head -1 || echo '-')"
+"""
+
+# ── Reload testing ────────────────────────────────────────────────────────────
+
+[tasks."test:reload:verify"]
+description = "Verify process reloaded with new binary"
+usage = 'arg "proc" help="Process to verify" default="nats"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+PROC="${usage_proc}"
+echo "=== Verifying $PROC reload ==="
+STATUS=$(pitchfork list 2>/dev/null | grep "$PROC" || true)
+if [ -z "$STATUS" ]; then
+  echo "FAIL: $PROC not found in pitchfork"
+  exit 1
+fi
+echo "OK Process found: $STATUS"
+if [ -f "$PROC/.bin/.version" ]; then
+  echo "Binary info:"
+  cat "$PROC/.bin/.version"
+fi
+echo "OK $PROC reload verified"
+"""
+
+[tasks."test:reload:single"]
+description = "Test single service reload"
+usage = 'arg "proc" help="Process to test" default="nats"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+PROC="${usage_proc}"
+echo "Rebuilding $PROC binary..."
+rm -f "$PROC/.bin/"* "$PROC/.bin/.version" 2>/dev/null || true
+mise run "$PROC:bin:build"
+echo "Reloading $PROC..."
+mise run reload "$PROC"
+sleep 5
+mise run test:reload:verify "$PROC"
+echo "OK $PROC single reload test PASSED"
+"""
+
+[tasks."test:reload:all"]
+description = "Run complete reload regression suite"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "=== Binary Hot-Reload Regression Suite ==="
+PASSED=0
+FAILED=0
+for proc in nats arc liftbridge telegraf; do
+  echo ""
+  echo "--- Testing $proc ---"
+  if mise run test:reload:single "$proc"; then
+    echo "OK PASSED: $proc"
+    PASSED=$((PASSED + 1))
+  else
+    echo "FAIL: $proc"
+    FAILED=$((FAILED + 1))
+  fi
+done
+echo ""
+echo "=== Summary ==="
+echo "TOTAL: $PASSED passed, $FAILED failed"
+[ $FAILED -gt 0 ] && exit 1
+echo "OK All reload tests PASSED"
+"""

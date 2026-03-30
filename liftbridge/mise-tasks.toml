@@ -1,0 +1,106 @@
+# Liftbridge - build from source (Basekick-Labs/liftbridge fork)
+
+["liftbridge:src:clone"]
+description = "Clone upstream Liftbridge repository"
+depends = ["sync-git:ensure"]
+run = """
+[ -d liftbridge/.src ] && exit 0
+sync-git/.bin/sync-git clone https://github.com/Basekick-Labs/liftbridge.git liftbridge/.src "${LB_VERSION:-master}"
+"""
+
+["liftbridge:src:update"]
+description = "Fetch and checkout pinned version"
+depends = ["liftbridge:src:clone", "sync-git:ensure"]
+run = """
+sync-git/.bin/sync-git fetch liftbridge/.src --tags
+sync-git/.bin/sync-git checkout liftbridge/.src "${LB_VERSION:-master}"
+"""
+
+["liftbridge:bin:build"]
+description = "Build liftbridge binary"
+depends = ["liftbridge:src:clone", "sync-git:ensure"]
+dir = "liftbridge/.src"
+env = { GOWORK = "off" }
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+[ -f ../.bin/liftbridge ] && exit 0
+mkdir -p ../.bin
+go build -o ../.bin/liftbridge .
+../../sync-git/.bin/sync-git version-file ../.bin/liftbridge --src=../.src
+"""
+
+["liftbridge:ensure"]
+description = "Ensure liftbridge binary exists"
+run = """
+[ -f liftbridge/.bin/liftbridge ] && exit 0
+mise run liftbridge:bin:build
+"""
+
+["liftbridge:run"]
+description = "Run liftbridge binary"
+depends = ["liftbridge:ensure"]
+run = """
+mkdir -p liftbridge/.data
+liftbridge/.bin/liftbridge --config=liftbridge/configs/standalone.yaml --data-dir=liftbridge/.data
+"""
+
+["liftbridge:health"]
+description = "Check Liftbridge health"
+run = "nc -z localhost 9292"
+
+["liftbridge:dev:run"]
+description = "Run liftbridge from source (development)"
+depends = ["liftbridge:src:clone"]
+dir = "liftbridge/.src"
+env = { GOWORK = "off" }
+run = """
+mkdir -p ../.data
+go run . --data-dir=../.data
+"""
+
+["liftbridge:config:version"]
+description = "Output pinned version"
+run = 'echo "${LB_VERSION:-master}"'
+
+["liftbridge:deps"]
+description = "Download dependencies"
+depends = ["liftbridge:src:clone"]
+dir = "liftbridge/.src"
+env = { GOWORK = "off" }
+run = "go mod download"
+
+["liftbridge:test"]
+description = "Run tests"
+depends = ["liftbridge:src:clone"]
+dir = "liftbridge/.src"
+env = { GOWORK = "off" }
+run = "go test -v ./..."
+
+["liftbridge:package"]
+description = "Package binary for release"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+GOOS="${GOOS:-$(go env GOOS)}"
+GOARCH="${GOARCH:-$(go env GOARCH)}"
+DIST="${DIST:-$DIST_DIR}"
+mkdir -p "$DIST"
+tar -czvf "$DIST/liftbridge-${GOOS}-${GOARCH}.tar.gz" -C liftbridge/.bin liftbridge
+"""
+
+["liftbridge:clean"]
+description = "Clean build artifacts"
+run = "rm -rf liftbridge/.bin"
+
+["liftbridge:clean:all"]
+description = "Clean everything"
+run = "rm -rf liftbridge/.src liftbridge/.bin liftbridge/.data"
+
+["liftbridge:clean:data"]
+description = "Clean data directory"
+run = "rm -rf liftbridge/.data"
+
+["liftbridge:clean:src"]
+description = "Clean source directory"
+run = "rm -rf liftbridge/.src"

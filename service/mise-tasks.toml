@@ -1,0 +1,50 @@
+# service - system service installer (in-repo Go code)
+
+["service:bin:build"]
+description = "Build service binary"
+dir = "service"
+env = { GOWORK = "off" }
+sources = ["service/*.go", "service/go.mod", "service/go.sum"]
+outputs = ["service/.bin/plat-telemetry-svc"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p .bin
+go build -o .bin/plat-telemetry-svc .
+"""
+
+["service:ensure"]
+description = "Ensure service binary exists"
+run = """
+[ -f service/.bin/plat-telemetry-svc ] && exit 0
+mise run service:bin:build
+"""
+
+["service:install"]
+description = "Install as system service (launchd/systemd)"
+depends = ["service:ensure"]
+run = "service/.bin/plat-telemetry-svc install"
+
+["service:uninstall"]
+description = "Uninstall system service"
+depends = ["service:ensure"]
+run = "service/.bin/plat-telemetry-svc uninstall"
+
+["service:start"]
+description = "Start the system service"
+depends = ["service:ensure"]
+run = "service/.bin/plat-telemetry-svc start"
+
+["service:stop"]
+description = "Stop the system service"
+depends = ["service:ensure"]
+run = "service/.bin/plat-telemetry-svc stop"
+
+["service:status"]
+description = "Check service status"
+depends = ["service:ensure"]
+run = "service/.bin/plat-telemetry-svc status"
+
+["service:clean"]
+description = "Clean build artifacts"
+run = "rm -rf service/.bin"

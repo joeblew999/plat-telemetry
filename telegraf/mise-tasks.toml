@@ -1,0 +1,107 @@
+# Telegraf - build from source (Basekick-Labs/telegraf fork)
+
+["telegraf:src:clone"]
+description = "Clone upstream Telegraf repository"
+depends = ["sync-git:ensure"]
+run = """
+[ -d telegraf/.src ] && exit 0
+sync-git/.bin/sync-git clone https://github.com/Basekick-Labs/telegraf.git telegraf/.src "${TG_VERSION:-master}"
+"""
+
+["telegraf:src:update"]
+description = "Fetch and checkout pinned version"
+depends = ["telegraf:src:clone", "sync-git:ensure"]
+run = """
+sync-git/.bin/sync-git fetch telegraf/.src --tags
+sync-git/.bin/sync-git checkout telegraf/.src "${TG_VERSION:-master}"
+"""
+
+["telegraf:bin:build"]
+description = "Build telegraf binary"
+depends = ["telegraf:src:clone", "sync-git:ensure"]
+dir = "telegraf/.src"
+env = { GOWORK = "off" }
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+[ -f ../.bin/telegraf ] && exit 0
+mkdir -p ../.bin
+make build
+cp telegraf ../.bin/
+../../sync-git/.bin/sync-git version-file ../.bin/telegraf --src=../.src
+"""
+
+["telegraf:ensure"]
+description = "Ensure telegraf binary exists"
+run = """
+[ -f telegraf/.bin/telegraf ] && exit 0
+mise run telegraf:bin:build
+"""
+
+["telegraf:run"]
+description = "Run telegraf binary"
+depends = ["telegraf:ensure"]
+run = """
+mkdir -p telegraf/.data
+telegraf/.bin/telegraf --config telegraf/telegraf.conf
+"""
+
+["telegraf:health"]
+description = "Check Telegraf health"
+run = 'pgrep -f "telegraf --config" > /dev/null'
+
+["telegraf:dev:run"]
+description = "Run telegraf from source (development)"
+depends = ["telegraf:src:clone"]
+dir = "telegraf/.src"
+env = { GOWORK = "off" }
+run = """
+mkdir -p ../.data
+go run ./cmd/telegraf --config ../telegraf.conf
+"""
+
+["telegraf:config:version"]
+description = "Output pinned version"
+run = 'echo "${TG_VERSION:-master}"'
+
+["telegraf:deps"]
+description = "Download dependencies"
+depends = ["telegraf:src:clone"]
+dir = "telegraf/.src"
+env = { GOWORK = "off" }
+run = "go mod download"
+
+["telegraf:test"]
+description = "Run tests"
+depends = ["telegraf:src:clone"]
+dir = "telegraf/.src"
+env = { GOWORK = "off" }
+run = "make test"
+
+["telegraf:package"]
+description = "Package binary for release"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+GOOS="${GOOS:-$(go env GOOS)}"
+GOARCH="${GOARCH:-$(go env GOARCH)}"
+DIST="${DIST:-$DIST_DIR}"
+mkdir -p "$DIST"
+tar -czvf "$DIST/telegraf-${GOOS}-${GOARCH}.tar.gz" -C telegraf/.bin telegraf
+"""
+
+["telegraf:clean"]
+description = "Clean build artifacts"
+run = "rm -rf telegraf/.bin"
+
+["telegraf:clean:all"]
+description = "Clean everything"
+run = "rm -rf telegraf/.src telegraf/.bin telegraf/.data"
+
+["telegraf:clean:data"]
+description = "Clean data directory"
+run = "rm -rf telegraf/.data"
+
+["telegraf:clean:src"]
+description = "Clean source directory"
+run = "rm -rf telegraf/.src"
