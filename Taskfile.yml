@@ -388,6 +388,7 @@ tasks:
   ci:build:
     desc: CI build step - ensure CI subsystem binaries exist
     cmds:
+      - task: sync-git:bin:build
       - task: ci:ensure
       - task: ci:verify
 
