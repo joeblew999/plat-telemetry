@@ -1,5 +1,11 @@
 min_version = "2025.1.0"
 
+[settings]
+# Skip attestation/SLSA checks — avoids API rate limits in restricted envs.
+# Checksum verification still runs.
+github_attestations = false
+slsa = false
+
 [tools]
 go = "1.26.1"
 "github:jdx/pitchfork" = "latest"
@@ -352,6 +358,48 @@ if [ $ERRORS -gt 0 ]; then
   exit 1
 fi
 echo "OK All CI binaries verified"
+"""
+
+[tasks."ci:start"]
+description = "Start CI subsystem services"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+echo "Platform: $(uname -s) / $(go env GOOS)"
+echo "pitchfork: $(command -v pitchfork)"
+pitchfork --version
+for subsystem in $SUBSYSTEMS_CI; do
+  echo "Starting $subsystem..."
+  pitchfork start "$subsystem" 2>&1 || {
+    echo "WARN: pitchfork start failed for $subsystem (exit $?)"
+    echo "Checking pitchfork logs..."
+    pitchfork logs "$subsystem" 2>&1 || true
+    exit 1
+  }
+done
+"""
+
+[tasks."ci:health"]
+description = "Health check CI subsystem services"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+pitchfork list 2>&1 || echo "WARN: pitchfork list failed"
+for subsystem in $SUBSYSTEMS_CI; do
+  echo "Checking $subsystem..."
+  mise run "$subsystem:health"
+done
+echo "OK All CI services healthy"
+"""
+
+[tasks."ci:stop"]
+description = "Stop CI subsystem services"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+for subsystem in $SUBSYSTEMS_CI; do
+  pitchfork stop "$subsystem" || true
+done
 """
 
 [tasks."ci:test"]
