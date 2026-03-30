@@ -14,7 +14,7 @@ vars:
   SUBSYSTEMS_RELEASE: arc gh liftbridge nats pc sync-cf sync-gh sync-git telegraf
   # Subsystems to build in CI (smaller set for faster iteration)
   # Note: gh is required for releases, always include it
-  SUBSYSTEMS_CI: '{{.SUBSYSTEMS_CI | default "gh nats"}}'
+  SUBSYSTEMS_CI: '{{.SUBSYSTEMS_CI | default "nats"}}'
 
 includes:
   arc: ./arc
