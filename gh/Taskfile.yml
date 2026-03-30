@@ -93,11 +93,19 @@ tasks:
       - test -d {{.GH_SRC}}/vendor || go list -m all >/dev/null 2>&1
 
   ensure:
-    desc: Ensure binary exists (build from source)
+    desc: Ensure binary exists (symlink system gh if available, else build from source)
     status:
       - test -f {{.GH_BIN_PATH}}
     cmds:
-      - task: bin:build
+      - mkdir -p {{.GH_BIN}}
+      - |
+        if command -v gh >/dev/null 2>&1; then
+          ln -sf $(command -v gh) {{.GH_BIN_PATH}}
+          echo "✅ Linked system gh: $(gh --version | head -1)"
+        else
+          echo "No system gh found, building from source..."
+          task gh:bin:build
+        fi
 
   install:
     desc: Install gh binary
