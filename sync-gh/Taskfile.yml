@@ -25,6 +25,9 @@ tasks:
   # bin: tasks
   bin:build:
     desc: Build sync-gh binary from source
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     dir: '{{.TASKFILE_DIR}}'
     sources:
       - "**/*.go"
@@ -61,6 +64,9 @@ tasks:
 
   config:version:
     desc: Output current version
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     deps: [ensure]
     cmds:
       - '{{.ROOT_DIR}}/sync-git/.bin/sync-git version-file {{.SYNC_GH_BIN_PATH}} --read'
