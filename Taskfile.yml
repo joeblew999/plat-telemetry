@@ -324,7 +324,7 @@ tasks:
       DIST: '{{.DIST | default .DIST_DIR}}'
     cmds:
       - mkdir -p {{.DIST}}
-      - for: [arc, gh, liftbridge, nats, pc, sync, telegraf]
+      - for: [arc, gh, liftbridge, nats, pc, sync-cf, sync-gh, sync-git, telegraf]
         task: '{{.ITEM}}:package'
         vars:
           GOOS: '{{.GOOS}}'
@@ -335,13 +335,13 @@ tasks:
   sync:check:
     desc: Check subsystems for upstream updates (manual testing)
     cmds:
-      - sync/.bin/sync check {{.SUBSYSTEM | default "all"}}
+      - sync-gh/.bin/sync-gh check {{.SUBSYSTEM | default "all"}}
 
   state:
     desc: Show GitHub state (from ci:sync cron job)
-    deps: [sync:ensure]
+    deps: [sync-gh:ensure]
     cmds:
-      - sync/.bin/sync state --show --dir=.github/state
+      - sync-gh/.bin/sync-gh state --show --dir=.github/state
 
   sync:update:
     desc: Update subsystem with available update (called by webhook)
@@ -454,9 +454,9 @@ tasks:
 
   ci:sync:
     desc: CI sync - capture GitHub state (cron job)
-    deps: [sync:ensure]
+    deps: [sync-gh:ensure]
     cmds:
-      - sync/.bin/sync state $GITHUB_REPOSITORY --dir=.github/state
+      - sync-gh/.bin/sync-gh state $GITHUB_REPOSITORY --dir=.github/state
       - |
         # Commit and push state if changed
         git config user.name "github-actions[bot]"
@@ -560,7 +560,7 @@ tasks:
   release:all:
     desc: Release all subsystem binaries
     cmds:
-      - for: [arc, gh, liftbridge, nats, pc, sync, telegraf]
+      - for: [arc, gh, liftbridge, nats, pc, sync-cf, sync-gh, sync-git, telegraf]
         task: release:binary
         vars:
           SUBSYSTEM: '{{.ITEM}}'
