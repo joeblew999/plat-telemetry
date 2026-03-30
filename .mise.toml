@@ -2,9 +2,9 @@ min_version = "2025.1.0"
 
 [tools]
 go = "1.26.1"
-"ubi:jdx/pitchfork" = "latest"
-"ubi:cli/cli" = "2.83.2"
-"ubi:nats-io/nats-server" = "2.10.24"
+"github:jdx/pitchfork" = "latest"
+"github:cli/cli" = "2.83.2"
+"github:nats-io/nats-server" = "2.10.24"
 
 [env]
 GOWORK = "off"
@@ -287,8 +287,7 @@ GOOS="$(go env GOOS)"
 GOARCH="$(go env GOARCH)"
 gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1 || \
   gh release create "$RELEASE_TAG" --repo "$RELEASE_REPO" --title "$SUBSYSTEM $VERSION" --notes "Binary release for $SUBSYSTEM $VERSION"
-gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPO" "$DIST_DIR"/${SUBSYSTEM}*-${GOOS}-${GOARCH}.tar.gz --clobber || \
-  gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPO" "$DIST_DIR"/*-${GOOS}-${GOARCH}.tar.gz --clobber
+gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPO" "$DIST_DIR"/${SUBSYSTEM}*-${GOOS}-${GOARCH}.tar.gz --clobber
 """
 
 [tasks."release:all"]
@@ -320,11 +319,11 @@ description = "CI build step"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-mise run sync-git:bin:build
 for subsystem in $SUBSYSTEMS_CI; do
   echo "Building $subsystem..."
-  mise run "$subsystem:bin:build" || mise run "$subsystem:ensure"
+  mise run "$subsystem:ensure"
 done
+mise run sync-git:bin:build
 mise run ci:verify
 """
 
