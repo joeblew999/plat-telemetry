@@ -1,0 +1,69 @@
+version: '3'
+
+vars:
+  MISE_BIN_NAME: mise
+  MISE_VERSION: '{{.MISE_VERSION | default "2025.5.6"}}'
+  MISE_BIN: '{{.TASKFILE_DIR}}/.bin'
+  MISE_BIN_PATH: '{{.MISE_BIN}}/{{.MISE_BIN_NAME}}'
+
+tasks:
+  # bin: tasks
+  bin:download:
+    desc: Download Mise binary
+    vars:
+      GOOS:
+        sh: go env GOOS
+      GOARCH:
+        sh: go env GOARCH
+      MISE_ARCH:
+        sh: |
+          case "$(go env GOARCH)" in
+            amd64) echo "x64" ;;
+            arm64) echo "arm64" ;;
+            *) echo "$(go env GOARCH)" ;;
+          esac
+      MISE_OS:
+        sh: |
+          case "$(go env GOOS)" in
+            darwin) echo "macos" ;;
+            linux) echo "linux" ;;
+            *) echo "$(go env GOOS)" ;;
+          esac
+    cmds:
+      - mkdir -p {{.MISE_BIN}}
+      - curl -sL "https://github.com/jdx/mise/releases/download/v{{.MISE_VERSION}}/mise-v{{.MISE_VERSION}}-{{.MISE_OS}}-{{.MISE_ARCH}}.tar.gz" | tar xz -C {{.MISE_BIN}} --strip-components=2 mise/bin/mise
+      - chmod +x {{.MISE_BIN_PATH}}
+      - |
+        {
+          echo "version: {{.MISE_VERSION}}"
+          echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "checksum: $(shasum -a 256 {{.MISE_BIN_PATH}} | awk '{print $1}')"
+        } > {{.MISE_BIN}}/.version
+    status:
+      - test -f {{.MISE_BIN_PATH}}
+
+  # Service tasks (alphabetical)
+  config:version:
+    desc: Output pinned version
+    cmds:
+      - echo "{{.MISE_VERSION}}"
+    silent: true
+
+  deps:
+    desc: Install tools defined in .mise.toml
+    deps: [ensure]
+    cmds:
+      - '{{.MISE_BIN_PATH}} install --yes'
+
+  ensure:
+    desc: Ensure Mise binary exists
+    status:
+      - test -f {{.MISE_BIN_PATH}}
+    cmds:
+      - task: bin:download
+
+  # clean: tasks (alphabetical)
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.MISE_BIN}}

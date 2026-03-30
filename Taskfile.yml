@@ -21,6 +21,7 @@ includes:
   docs: ./docs
   gh: ./gh
   liftbridge: ./liftbridge
+  mise: ./mise
   nats: ./nats
   pc: ./pc
   service: ./service
