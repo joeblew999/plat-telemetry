@@ -9,41 +9,64 @@ outputs = ["service/.bin/plat-telemetry-svc"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
+EXE=$(go env GOEXE)
 mkdir -p .bin
-go build -o .bin/plat-telemetry-svc .
+go build -o .bin/plat-telemetry-svc${EXE} .
 """
 
 ["service:ensure"]
 description = "Ensure service binary exists"
 run = """
-[ -f service/.bin/plat-telemetry-svc ] && exit 0
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+[ -f service/.bin/plat-telemetry-svc${EXE} ] && exit 0
 mise run service:bin:build
 """
 
 ["service:install"]
 description = "Install as system service (launchd/systemd)"
 depends = ["service:ensure"]
-run = "service/.bin/plat-telemetry-svc install"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+service/.bin/plat-telemetry-svc${EXE} install
+"""
 
 ["service:uninstall"]
 description = "Uninstall system service"
 depends = ["service:ensure"]
-run = "service/.bin/plat-telemetry-svc uninstall"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+service/.bin/plat-telemetry-svc${EXE} uninstall
+"""
 
 ["service:start"]
 description = "Start the system service"
 depends = ["service:ensure"]
-run = "service/.bin/plat-telemetry-svc start"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+service/.bin/plat-telemetry-svc${EXE} start
+"""
 
 ["service:stop"]
 description = "Stop the system service"
 depends = ["service:ensure"]
-run = "service/.bin/plat-telemetry-svc stop"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+service/.bin/plat-telemetry-svc${EXE} stop
+"""
 
 ["service:status"]
 description = "Check service status"
 depends = ["service:ensure"]
-run = "service/.bin/plat-telemetry-svc status"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+service/.bin/plat-telemetry-svc${EXE} status
+"""
 
 ["service:clean"]
 description = "Clean build artifacts"

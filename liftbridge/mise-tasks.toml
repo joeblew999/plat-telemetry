@@ -4,16 +4,20 @@
 description = "Clone upstream Liftbridge repository"
 depends = ["sync-git:ensure"]
 run = """
+#!/usr/bin/env bash
 [ -d liftbridge/.src ] && exit 0
-sync-git/.bin/sync-git clone https://github.com/Basekick-Labs/liftbridge.git liftbridge/.src "${LB_VERSION:-master}"
+EXE=$(go env GOEXE)
+sync-git/.bin/sync-git${EXE} clone https://github.com/Basekick-Labs/liftbridge.git liftbridge/.src "${LB_VERSION:-master}"
 """
 
 ["liftbridge:src:update"]
 description = "Fetch and checkout pinned version"
 depends = ["liftbridge:src:clone", "sync-git:ensure"]
 run = """
-sync-git/.bin/sync-git fetch liftbridge/.src --tags
-sync-git/.bin/sync-git checkout liftbridge/.src "${LB_VERSION:-master}"
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-git/.bin/sync-git${EXE} fetch liftbridge/.src --tags
+sync-git/.bin/sync-git${EXE} checkout liftbridge/.src "${LB_VERSION:-master}"
 """
 
 ["liftbridge:bin:build"]
@@ -24,16 +28,19 @@ env = { GOWORK = "off" }
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-[ -f ../.bin/liftbridge ] && exit 0
+EXE=$(go env GOEXE)
+[ -f ../.bin/liftbridge${EXE} ] && exit 0
 mkdir -p ../.bin
-go build -o ../.bin/liftbridge .
-../../sync-git/.bin/sync-git version-file ../.bin/liftbridge --src=../.src
+go build -o ../.bin/liftbridge${EXE} .
+../../sync-git/.bin/sync-git${EXE} version-file ../.bin/liftbridge${EXE} --src=../.src
 """
 
 ["liftbridge:ensure"]
 description = "Ensure liftbridge binary exists"
 run = """
-[ -f liftbridge/.bin/liftbridge ] && exit 0
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+[ -f liftbridge/.bin/liftbridge${EXE} ] && exit 0
 mise run liftbridge:bin:build
 """
 
@@ -41,8 +48,10 @@ mise run liftbridge:bin:build
 description = "Run liftbridge binary"
 depends = ["liftbridge:ensure"]
 run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
 mkdir -p liftbridge/.data
-liftbridge/.bin/liftbridge --config=liftbridge/configs/standalone.yaml --data-dir=liftbridge/.data
+liftbridge/.bin/liftbridge${EXE} --config=liftbridge/configs/standalone.yaml --data-dir=liftbridge/.data
 """
 
 ["liftbridge:health"]
@@ -86,7 +95,8 @@ GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
 mkdir -p "$DIST"
-tar -czvf "$DIST/liftbridge-${GOOS}-${GOARCH}.tar.gz" -C liftbridge/.bin liftbridge
+EXE=$(go env GOEXE)
+tar -czvf "$DIST/liftbridge-${GOOS}-${GOARCH}.tar.gz" -C liftbridge/.bin liftbridge${EXE}
 """
 
 ["liftbridge:clean"]

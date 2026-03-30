@@ -9,26 +9,33 @@ outputs = ["sync-cf/.bin/sync-cf"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
+EXE=$(go env GOEXE)
 mkdir -p .bin
-go build -o .bin/sync-cf .
+go build -o .bin/sync-cf${EXE} .
 {
   echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
   echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "checksum: $(sha256sum .bin/sync-cf 2>/dev/null || shasum -a 256 .bin/sync-cf | awk '{print $1}')"
+  echo "checksum: $(sha256sum .bin/sync-cf${EXE} 2>/dev/null || shasum -a 256 .bin/sync-cf${EXE} | awk '{print $1}')"
 } > .bin/.version
 """
 
 ["sync-cf:ensure"]
 description = "Ensure sync-cf binary exists"
 run = """
-[ -f sync-cf/.bin/sync-cf ] && exit 0
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+[ -f sync-cf/.bin/sync-cf${EXE} ] && exit 0
 mise run sync-cf:bin:build
 """
 
 ["sync-cf:run"]
 description = "Run webhook server"
 depends = ["sync-cf:ensure"]
-run = "sync-cf/.bin/sync-cf webhook 9092"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-cf/.bin/sync-cf${EXE} webhook 9092
+"""
 
 ["sync-cf:health"]
 description = "Check service health"
@@ -63,7 +70,8 @@ GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
 mkdir -p "$DIST"
-tar -czvf "$DIST/sync-cf-${GOOS}-${GOARCH}.tar.gz" -C sync-cf/.bin sync-cf
+EXE=$(go env GOEXE)
+tar -czvf "$DIST/sync-cf-${GOOS}-${GOARCH}.tar.gz" -C sync-cf/.bin sync-cf${EXE}
 """
 
 ["sync-cf:clean"]
