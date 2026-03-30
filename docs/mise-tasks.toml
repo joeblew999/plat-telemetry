@@ -49,14 +49,16 @@ VERSION_NUM="${DOCS_VERSION#v}"
 mkdir -p docs/.bin
 if [ "$GOOS" = "windows" ]; then
   ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.zip"
-  curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" -o /tmp/hugo.zip
-  unzip -o /tmp/hugo.zip hugo.exe -d docs/.bin
-  rm -f /tmp/hugo.zip
-elif [ "$GOOS" = "darwin" ]; then
-  ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-universal.tar.gz"
-  curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" | tar xz -C docs/.bin hugo
+  TMPFILE=$(mktemp)
+  curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" -o "$TMPFILE"
+  unzip -o "$TMPFILE" hugo.exe -d docs/.bin
+  rm -f "$TMPFILE"
 else
-  ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.tar.gz"
+  if [ "$GOOS" = "darwin" ]; then
+    ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-universal.tar.gz"
+  else
+    ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.tar.gz"
+  fi
   curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" | tar xz -C docs/.bin hugo
 fi
 sync-git/.bin/sync-git${EXE} version-file docs/.bin/hugo${EXE} --version="${DOCS_VERSION}"
