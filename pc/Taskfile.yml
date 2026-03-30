@@ -21,6 +21,9 @@ tasks:
   # src: tasks
   src:clone:
     desc: Clone the upstream repository at pinned version
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     cmds:
       - '{{.PC_SYNC_CLI}} clone {{.PC_UPSTREAM_REPO}} {{.PC_SRC}} {{.PC_VERSION}}'
     status:
@@ -28,6 +31,9 @@ tasks:
 
   src:update:
     desc: Fetch and checkout pinned version
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     deps: [src:clone]
     cmds:
       - '{{.PC_SYNC_CLI}} fetch {{.PC_SRC}} --tags'
@@ -36,6 +42,9 @@ tasks:
   # bin: tasks
   bin:build:
     desc: Build process-compose binary
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     deps: [src:clone]
     dir: '{{.PC_SRC}}'
     status:
@@ -47,6 +56,9 @@ tasks:
 
   bin:download:
     desc: Download pre-built binary from release
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     vars:
       GOOS:
         sh: go env GOOS
