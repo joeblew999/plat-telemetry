@@ -25,18 +25,9 @@ jobs:
   sync:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sync_only)
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.1'
-          cache: false
-
-      - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@latest
-
+      - uses: jdx/mise-action@v2
       - name: Sync GitHub state
         run: task ci:sync
         env:
@@ -49,30 +40,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-
     runs-on: ${{ matrix.os }}
-
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.1'
-          cache: false
-
-      - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@latest
-
-      # Same commands as local dev!
+      - uses: jdx/mise-action@v2
       - name: Build binaries
         run: task ci:build
-
       - name: Run tests
         run: task ci:test
-
       - name: Package binaries
         run: task ci:package
-
       - name: Release binaries
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         run: task ci:release
@@ -83,18 +60,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.1'
-          cache: false
-
-      - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@latest
-
+      - uses: jdx/mise-action@v2
       - name: Deploy pages
         run: task ci:pages:deploy
         env:
