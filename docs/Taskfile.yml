@@ -21,6 +21,9 @@ tasks:
   # src: tasks
   src:clone:
     desc: Clone Hugo upstream repository at pinned version
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     cmds:
       - '{{.DOCS_SYNC_CLI}} clone {{.DOCS_UPSTREAM_REPO}} {{.DOCS_SRC}} {{.DOCS_VERSION}}'
     status:
@@ -28,6 +31,9 @@ tasks:
 
   src:update:
     desc: Fetch and checkout pinned version
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     deps: [src:clone]
     cmds:
       - '{{.DOCS_SYNC_CLI}} fetch {{.DOCS_SRC}} --tags'
@@ -36,6 +42,9 @@ tasks:
   # bin: tasks
   bin:build:
     desc: Build Hugo binary from source
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     deps: [src:clone]
     dir: '{{.DOCS_SRC}}'
     status:
@@ -47,6 +56,9 @@ tasks:
 
   bin:download:
     desc: Download pre-built Hugo binary from GitHub releases
+    preconditions:
+      - sh: test -f {{.ROOT_DIR}}/sync-git/.bin/sync-git
+        msg: "sync-git binary not built — run: task sync-git:bin:build"
     vars:
       GOOS:
         sh: go env GOOS
