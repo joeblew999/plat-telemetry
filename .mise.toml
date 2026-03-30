@@ -1,9 +1,5 @@
 min_version = "2025.1.0"
 
-[settings]
-# Lock exact download URLs + checksums so CI doesn't need GitHub API calls
-lockfile = true
-
 [tools]
 go = "1.26.1"
 "ubi:jdx/pitchfork" = "latest"
@@ -17,7 +13,7 @@ RELEASE_VERSION = "latest"
 DIST_DIR = "{{config_root}}/.dist"
 SUBSYSTEMS_BUILD = "arc docs liftbridge nats telegraf"
 SUBSYSTEMS_RELEASE = "arc liftbridge nats sync-cf sync-gh sync-git telegraf"
-SUBSYSTEMS_CI = { value = "nats", tools = true }
+SUBSYSTEMS_CI = "nats"
 # Subsystem versions
 NATS_VERSION = "v2.10.24"
 ARC_VERSION = "main"
@@ -25,30 +21,6 @@ LB_VERSION = "master"
 TG_VERSION = "master"
 DOCS_VERSION = "v0.140.2"
 _.file = [".env"]
-
-# ── Prepare (auto-install deps when lockfiles change) ────────────────────────
-
-[prepare.go]
-# Built-in Go provider: runs `go mod download` when go.sum changes
-
-[prepare.sync-git]
-sources = ["sync-git/**/*.go", "sync-git/go.mod"]
-outputs = ["sync-git/.bin/sync-git"]
-run = "mise run sync-git:bin:build"
-auto = true
-
-[prepare.sync-gh]
-sources = ["sync-gh/**/*.go", "sync-gh/go.mod"]
-outputs = ["sync-gh/.bin/sync-gh"]
-run = "mise run sync-gh:bin:build"
-depends = ["sync-git"]
-auto = true
-
-[prepare.sync-cf]
-sources = ["sync-cf/**/*.go", "sync-cf/go.mod"]
-outputs = ["sync-cf/.bin/sync-cf"]
-run = "mise run sync-cf:bin:build"
-auto = true
 
 [task_config]
 includes = [
