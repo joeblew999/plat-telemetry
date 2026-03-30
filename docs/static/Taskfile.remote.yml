@@ -32,8 +32,12 @@ includes:
     taskfile: '{{.REMOTE_BASE}}/pc/Taskfile.yml'
   service:
     taskfile: '{{.REMOTE_BASE}}/service/Taskfile.yml'
-  sync:
-    taskfile: '{{.REMOTE_BASE}}/sync/Taskfile.yml'
+  sync-gh:
+    taskfile: '{{.REMOTE_BASE}}/sync-gh/Taskfile.yml'
+  sync-git:
+    taskfile: '{{.REMOTE_BASE}}/sync-git/Taskfile.yml'
+  sync-cf:
+    taskfile: '{{.REMOTE_BASE}}/sync-cf/Taskfile.yml'
   telegraf:
     taskfile: '{{.REMOTE_BASE}}/telegraf/Taskfile.yml'
   utm:
