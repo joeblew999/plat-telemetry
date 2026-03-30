@@ -1,0 +1,183 @@
+[vars]
+bin_name = "packer"
+packer_version = "1.12.0"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/packer"
+data = "{{config_root}}/.data"
+vagrant_home = "{{config_root}}/.data/vagrant"
+packer_cache = "{{config_root}}/.data/packer/cache"
+packer_plugins = "{{config_root}}/.data/packer/plugins"
+sys_container = "~/Library/Containers/com.utmapp.UTM"
+sys_support = "~/Library/Application Support/UTM"
+sys_cache = "~/Library/Caches/com.utmapp.UTM"
+sys_prefs = "~/Library/Preferences/com.utmapp.UTM.plist"
+sys_packer_home = "~/.packer.d"
+sys_packer_cache = "~/.cache/packer"
+sys_vagrant_home = "~/.vagrant.d"
+dist_dir = "{{config_root}}/../.dist"
+
+[env]
+VAGRANT_HOME = "{{vars.vagrant_home}}"
+PACKER_CACHE_DIR = "{{vars.packer_cache}}"
+PACKER_CONFIG_DIR = "{{vars.packer_plugins}}"
+
+# --- bin: tasks ---
+
+[tasks."bin:download"]
+description = "Download Packer binary"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+curl -sL "https://releases.hashicorp.com/packer/{{vars.packer_version}}/packer_{{vars.packer_version}}_${GOOS}_${GOARCH}.zip" -o /tmp/{{vars.bin_name}}.zip
+unzip -o /tmp/{{vars.bin_name}}.zip -d {{vars.bin}}
+rm /tmp/{{vars.bin_name}}.zip
+chmod +x {{vars.bin_path}}
+{
+  echo "version: {{vars.packer_version}}"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(shasum -a 256 {{vars.bin_path}} | awk '{print $1}')"
+} > {{vars.bin}}/.version
+"""
+
+# --- box: tasks ---
+
+[tasks."box:download"]
+description = "Pre-download vagrant boxes"
+dir = "{{config_root}}"
+run = """
+vagrant box add naveenrajm7/ubuntu-24.04-aarch64 --provider utm || true
+vagrant box add naveenrajm7/debian-13-aarch64 --provider utm || true
+vagrant box add naveenrajm7/alpine-3.21-aarch64 --provider utm || true
+"""
+
+[tasks."box:list"]
+description = "List downloaded boxes"
+run = "vagrant box list"
+
+# --- deps: tasks ---
+
+[tasks.deps]
+description = "Install all dependencies"
+run = ["mise run -C {{config_root}} deps:packer", "mise run -C {{config_root}} deps:utm", "mise run -C {{config_root}} deps:vagrant", "mise run -C {{config_root}} deps:plugin"]
+
+[tasks."deps:packer"]
+description = "Download Packer binary"
+run = "mise run -C {{config_root}} bin:download"
+
+[tasks."deps:plugin"]
+description = "Install vagrant_utm plugin"
+depends = ["deps:vagrant"]
+run = """
+vagrant plugin list | grep -q vagrant_utm && exit 0
+mkdir -p {{vars.vagrant_home}}
+vagrant plugin install vagrant_utm
+"""
+
+[tasks."deps:utm"]
+description = "Install UTM via Homebrew"
+run = "test -d /Applications/UTM.app || brew install --cask utm"
+
+[tasks."deps:vagrant"]
+description = "Install Vagrant via Homebrew"
+run = "command -v vagrant > /dev/null || brew install vagrant"
+
+# --- service tasks (alphabetical) ---
+
+[tasks."config:version"]
+description = "Output the pinned Packer version (for sync poller)"
+run = "echo {{vars.packer_version}}"
+quiet = true
+
+[tasks.destroy]
+description = "Destroy VM(s)"
+dir = "{{config_root}}"
+run = "vagrant destroy -f ${VM:-}"
+
+[tasks.down]
+description = "Stop VM(s) gracefully"
+dir = "{{config_root}}"
+run = "vagrant halt ${VM:-}"
+
+[tasks.ensure]
+description = "Ensure Packer binary exists"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:download"
+
+[tasks.health]
+description = "Check if any VMs are running"
+dir = "{{config_root}}"
+run = "vagrant status | grep -q running"
+
+[tasks.package]
+description = "Package Packer binary for release"
+run = """
+GOOS=${GOOS:-$(go env GOOS)}
+GOARCH=${GOARCH:-$(go env GOARCH)}
+DIST=${DIST:-{{vars.dist_dir}}}
+tar -czvf ${DIST}/{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz -C {{vars.bin}} {{vars.bin_name}}
+"""
+
+[tasks.provision]
+description = "Run provisioners on VM(s)"
+dir = "{{config_root}}"
+run = "vagrant provision ${VM:-}"
+
+[tasks.reload]
+description = "Reload VM(s) with updated Vagrantfile"
+dir = "{{config_root}}"
+run = "vagrant reload ${VM:-}"
+
+[tasks.ssh]
+description = "SSH into VM"
+dir = "{{config_root}}"
+run = "vagrant ssh ${VM:-ubuntu}"
+
+[tasks.status]
+description = "Show VM status"
+dir = "{{config_root}}"
+run = "vagrant status"
+
+[tasks.up]
+description = "Start VM(s)"
+dir = "{{config_root}}"
+depends = ["deps"]
+run = "vagrant up ${VM:-} --provider=utm"
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean build artifacts (.bin/)"
+run = "rm -rf {{vars.bin}}"
+
+[tasks."clean:all"]
+description = "Clean everything (.bin, .data, system deps)"
+run = ["rm -rf {{vars.bin}} {{vars.data}}", "mise run -C {{config_root}} clean:deps"]
+
+[tasks."clean:data"]
+description = "Clean data directory"
+run = "rm -rf {{vars.data}}"
+
+[tasks."clean:deps"]
+description = "Uninstall UTM and Vagrant via Homebrew"
+run = """
+vagrant plugin uninstall vagrant_utm || true
+brew uninstall --cask utm || true
+brew uninstall vagrant || true
+"""
+
+[tasks."clean:system"]
+description = "Remove all system-level data"
+run = ["mise run -C {{config_root}} clean:system:packer", "mise run -C {{config_root}} clean:system:utm", "mise run -C {{config_root}} clean:system:vagrant"]
+
+[tasks."clean:system:packer"]
+description = "Remove Packer system data"
+run = "rm -rf {{vars.sys_packer_home}} {{vars.sys_packer_cache}} ~/Library/Caches/packer"
+
+[tasks."clean:system:utm"]
+description = "Remove UTM system data"
+run = ["rm -rf {{vars.sys_container}} {{vars.sys_cache}}", "rm -rf '{{vars.sys_support}}'", "rm -f {{vars.sys_prefs}}"]
+
+[tasks."clean:system:vagrant"]
+description = "Remove Vagrant system data"
+run = "rm -rf {{vars.sys_vagrant_home}}"

@@ -1,0 +1,13 @@
+[tasks.test]
+description = "Quick smoke test"
+run = """
+echo "Running quick test..."
+echo "Test framework working"
+"""
+
+[tasks.all]
+description = "Run complete regression suite"
+run = """
+echo "NOTE: Tests still in root Taskfile"
+echo "Run: task test:reload:all"
+"""

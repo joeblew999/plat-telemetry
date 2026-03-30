@@ -1,0 +1,167 @@
+[vars]
+bin_name = "sync"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/sync"
+data = "{{config_root}}/.data"
+port = "9090"
+release_repo = "joeblew999/plat-telemetry"
+release_version = "latest"
+dist_dir = "{{config_root}}/../.dist"
+
+[env]
+GOWORK = "off"
+
+# --- src: tasks ---
+
+[tasks."src:clone"]
+description = "No-op (sync is in-repo code)"
+run = "true"
+
+[tasks."src:update"]
+description = "No-op (sync is in-repo code)"
+run = "true"
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Build sync binary from source"
+dir = "{{config_root}}"
+run = """
+mkdir -p {{vars.bin}}
+go build -o {{vars.bin_path}} .
+{{vars.bin_path}} version-file {{vars.bin_path}} --src={{config_root}}/..
+"""
+
+[tasks."bin:download"]
+description = "Download pre-built sync binary (USER)"
+run = """
+mkdir -p {{vars.bin}}
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+gh release download {{vars.release_version}} \
+  --repo {{vars.release_repo}} \
+  --pattern "{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz" \
+  --output - | tar xz -C {{vars.bin}}
+chmod +x {{vars.bin_path}}
+"""
+
+# --- service tasks (alphabetical) ---
+
+[tasks."cf:check"]
+description = "Check if cloudflared is installed"
+depends = ["ensure"]
+run = "{{vars.bin_path}} cf check"
+
+[tasks."cf:install"]
+description = "Install cloudflared"
+depends = ["ensure"]
+run = "{{vars.bin_path}} cf install"
+
+[tasks."cf:tunnel"]
+description = "Start cloudflared quick tunnel"
+depends = ["ensure"]
+run = "{{vars.bin_path}} cf tunnel {{vars.port}}"
+
+[tasks."config:port"]
+description = "Output service port"
+run = "echo {{vars.port}}"
+quiet = true
+
+[tasks."config:version"]
+description = "Output pinned version (uses git commit since sync is in-repo)"
+depends = ["ensure"]
+run = "{{vars.bin_path}} version-file {{vars.bin_path}} --read"
+quiet = true
+
+[tasks.deps]
+description = "Download Go dependencies"
+dir = "{{config_root}}"
+run = "test -f go.sum || go mod download"
+
+[tasks.ensure]
+description = "Ensure binary exists (build from source)"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:build"
+
+[tasks.health]
+description = "Check webhook server health"
+run = "curl -sf http://localhost:{{vars.port}}/health > /dev/null"
+
+[tasks."health:poller"]
+description = "Check poller service health (always returns success if running)"
+run = "exit 0"
+
+[tasks.package]
+description = "Package sync binary for release"
+depends = ["bin:build"]
+run = """
+GOOS=${GOOS:-$(go env GOOS)}
+GOARCH=${GOARCH:-$(go env GOARCH)}
+DIST=${DIST:-{{vars.dist_dir}}}
+mkdir -p ${DIST}
+tar czf ${DIST}/{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz -C {{vars.bin}} {{vars.bin_name}} .version
+"""
+
+[tasks.poll]
+description = "Run polling service for upstream repos"
+depends = ["ensure"]
+run = "{{vars.bin_path}} poll"
+
+[tasks."poll:taskfiles"]
+description = "Run Taskfile polling service for version changes"
+depends = ["ensure"]
+run = "{{vars.bin_path}} poll-taskfiles"
+
+[tasks.run]
+description = "Run sync service (webhook server + tunnel)"
+depends = ["ensure"]
+run = "{{vars.bin_path}} serve"
+[tasks.run.env]
+PORT = "{{vars.port}}"
+SMEE_URL = ""
+SYNC_DATA = "{{vars.data}}"
+
+[tasks."run:webhook"]
+description = "Run webhook server only (no tunnel)"
+depends = ["ensure"]
+run = "{{vars.bin_path}} webhook"
+[tasks."run:webhook".env]
+PORT = "{{vars.port}}"
+
+[tasks.state]
+description = "Capture GitHub state (usage: mise run state REPO=owner/repo)"
+depends = ["ensure"]
+run = "{{vars.bin_path}} state ${REPO:-} --dir=${STATE_DIR:-{{config_root}}/../.github/state}"
+
+[tasks."state:show"]
+description = "Show captured GitHub state"
+depends = ["ensure"]
+run = "{{vars.bin_path}} state --show --dir=${STATE_DIR:-{{config_root}}/../.github/state}"
+
+[tasks.test]
+description = "Run unit tests"
+dir = "{{config_root}}"
+run = "go test -v ./..."
+
+[tasks.tunnel]
+description = "Forward smee.io webhooks to local"
+depends = ["ensure"]
+run = "{{vars.bin_path}} tunnel ${SMEE_URL:-new} ${TARGET:-http://localhost:9090/webhook}"
+
+[tasks."tunnel:setup"]
+description = "Create smee channel and configure GitHub webhook"
+depends = ["ensure"]
+run = "{{vars.bin_path}} tunnel-setup ${REPO:-joeblew999/plat-telemetry} --events=${EVENTS:-push,release,workflow_run,page_build,deployment_status}"
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean built binaries"
+run = "rm -rf {{vars.bin}}"
+
+[tasks."clean:all"]
+description = "Clean everything (binaries + data)"
+run = "rm -rf {{vars.bin}} {{vars.data}}"
+
+[tasks."clean:data"]
+description = "Clean runtime data"
+run = "rm -rf {{vars.data}}"

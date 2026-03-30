@@ -1,0 +1,175 @@
+[vars]
+bin_name = "app.wasm"
+version = "0.1.0"
+src = "{{config_root}}"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/app.wasm"
+port = "8787"
+assets_gen_version = "v0.31.0"
+
+[env]
+GOWORK = "off"
+
+# --- src: tasks ---
+
+[tasks."src:clone"]
+description = "No-op (sync-cf-worker is in-repo code)"
+run = "true"
+
+[tasks."src:update"]
+description = "No-op (sync-cf-worker is in-repo code)"
+run = "true"
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Build WASM binary with TinyGo (728KB, fits free tier)"
+dir = "{{vars.src}}"
+run = """
+test -f {{vars.bin_path}} && test -f {{vars.bin}}/worker.mjs && exit 0
+mkdir -p {{vars.bin}}
+go run github.com/syumai/workers/cmd/workers-assets-gen@{{vars.assets_gen_version}} -mode=tinygo -o={{vars.bin}}
+tinygo build -o {{vars.bin_path}} -target wasm -no-debug .
+{
+  echo "version: {{vars.version}}"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(shasum -a 256 {{vars.bin_path}} | awk '{print $1}')"
+  echo "size: $(du -h {{vars.bin_path}} | cut -f1)"
+  echo "compiler: tinygo"
+} > {{vars.bin}}/.version
+"""
+
+[tasks."bin:build:go"]
+description = "Build WASM binary with standard Go (5.6MB, requires paid tier)"
+dir = "{{vars.src}}"
+run = """
+mkdir -p {{vars.bin}}
+go run github.com/syumai/workers/cmd/workers-assets-gen@{{vars.assets_gen_version}} -mode=go -o={{vars.bin}}
+GOOS=js GOARCH=wasm go build -ldflags="-X main.version={{vars.version}}" -o {{vars.bin_path}} .
+{
+  echo "version: {{vars.version}}"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(shasum -a 256 {{vars.bin_path}} | awk '{print $1}')"
+  echo "size: $(du -h {{vars.bin_path}} | cut -f1)"
+  echo "compiler: go"
+} > {{vars.bin}}/.version
+"""
+
+# --- dev: tasks ---
+
+[tasks."dev:run"]
+description = "Run local development server with hot reload"
+depends = ["wrangler:ensure", "bin:build"]
+dir = "{{vars.src}}"
+run = "PATH=\"$HOME/.bun/bin:$PATH\" wrangler dev --local --port {{vars.port}}"
+
+[tasks."dev:test"]
+description = "Test local worker endpoints"
+run = """
+echo "Testing sync-cf-worker at http://localhost:{{vars.port}}"
+echo ""
+echo "GET /"
+curl -sf http://localhost:{{vars.port}}/ | jq . 2>/dev/null || curl -s http://localhost:{{vars.port}}/
+echo ""
+echo "GET /health"
+curl -sf http://localhost:{{vars.port}}/health && echo " OK" || echo "health check failed"
+echo ""
+echo "POST /webhook/pages (test payload)"
+curl -sf -X POST -H "Content-Type: application/json" \
+  -d '{"project":"test","deployment_id":"123"}' \
+  http://localhost:{{vars.port}}/webhook/pages && echo " OK" || echo "webhook failed"
+echo ""
+echo "GET /metrics"
+curl -sf http://localhost:{{vars.port}}/metrics | jq . 2>/dev/null || curl -s http://localhost:{{vars.port}}/metrics
+"""
+
+# --- service tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = """
+rm -rf {{vars.bin}}
+rm -rf {{vars.src}}/node_modules
+rm -rf {{vars.src}}/.wrangler
+"""
+
+[tasks."config:port"]
+description = "Output configured port"
+run = "echo {{vars.port}}"
+quiet = true
+
+[tasks."config:version"]
+description = "Output current version"
+run = "echo {{vars.version}}"
+quiet = true
+
+[tasks.deploy]
+description = "Deploy to Cloudflare Workers"
+depends = ["wrangler:ensure", "bin:build"]
+dir = "{{vars.src}}"
+run = "PATH=\"$HOME/.bun/bin:$PATH\" wrangler deploy"
+
+[tasks."deploy:production"]
+description = "Deploy to production environment"
+depends = ["wrangler:ensure", "bin:build"]
+dir = "{{vars.src}}"
+run = "PATH=\"$HOME/.bun/bin:$PATH\" wrangler deploy --env production"
+
+[tasks.deps]
+description = "Download Go dependencies"
+dir = "{{vars.src}}"
+run = ["go mod download", "go mod tidy"]
+
+[tasks.ensure]
+description = "Ensure WASM binary exists"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:build"
+
+[tasks.health]
+description = "Check if local worker is healthy"
+run = "curl -sf http://localhost:{{vars.port}}/health > /dev/null"
+
+[tasks.run]
+description = "Run local worker server (for process-compose)"
+depends = ["wrangler:ensure", "ensure"]
+dir = "{{vars.src}}"
+run = "PATH=\"$HOME/.bun/bin:$PATH\" wrangler dev --local --port {{vars.port}}"
+
+[tasks.test]
+description = "Verify WASM build (no native tests for syscall/js code)"
+depends = ["bin:build"]
+run = """
+if [ -f {{vars.bin_path}} ]; then
+  echo "WASM binary built successfully ($(cat {{vars.bin}}/.version | grep size | cut -d' ' -f2))"
+  cat {{vars.bin}}/.version
+else
+  echo "WASM binary not found"
+  exit 1
+fi
+"""
+
+# --- wrangler: tasks ---
+
+[tasks."wrangler:ensure"]
+description = "Ensure wrangler CLI is installed"
+run = "(command -v wrangler || test -f ~/.bun/bin/wrangler) || mise run -C {{config_root}} wrangler:install"
+
+[tasks."wrangler:install"]
+description = "Install wrangler CLI (via bun or npm)"
+run = """
+if command -v bun >/dev/null 2>&1; then
+  bun install -g wrangler
+  echo ""
+  echo "Add bun to PATH if not already: export PATH=\"\\$HOME/.bun/bin:\\$PATH\""
+elif command -v npm >/dev/null 2>&1; then
+  npm install -g wrangler
+else
+  echo "Neither bun nor npm found. Install one of them first."
+  exit 1
+fi
+"""
+
+[tasks."wrangler:secret:set"]
+description = "Set a secret in Cloudflare Workers"
+depends = ["wrangler:ensure"]
+dir = "{{vars.src}}"
+run = "PATH=\"$HOME/.bun/bin:$PATH\" wrangler secret put ${NAME:?NAME is required}"
