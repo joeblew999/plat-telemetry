@@ -384,7 +384,6 @@ description = "Health check CI subsystem services"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-sleep 5
 pitchfork list 2>&1 || echo "WARN: pitchfork list failed"
 for subsystem in $SUBSYSTEMS_CI; do
   echo "Checking $subsystem..."
