@@ -1,0 +1,91 @@
+[vars]
+bin_name = "sync-cf"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/sync-cf"
+port = "9092"
+release_repo = "joeblew999/plat-telemetry"
+release_version = "latest"
+release_url = "https://github.com/joeblew999/plat-telemetry/releases/download/latest"
+dist_dir = "{{config_root}}/../.dist"
+
+[env]
+GOWORK = "off"
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Build sync-cf binary from source"
+dir = "{{config_root}}"
+run = """
+mkdir -p {{vars.bin}}
+go build -o {{vars.bin_path}} .
+{
+  echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(shasum -a 256 {{vars.bin_path}} | awk '{print $1}')"
+} > {{vars.bin}}/.version
+"""
+
+# --- service tasks (alphabetical) ---
+
+[tasks."config:port"]
+description = "Output configured port"
+run = "echo {{vars.port}}"
+quiet = true
+
+[tasks."config:version"]
+description = "Output version from .version file"
+run = "cat {{vars.bin}}/.version 2>/dev/null || echo 'not built'"
+quiet = true
+
+[tasks.deps]
+description = "Download Go dependencies"
+dir = "{{config_root}}"
+run = "go mod download"
+
+[tasks.ensure]
+description = "Ensure binary exists (build from source)"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:build"
+
+[tasks.health]
+description = "Check service health"
+run = "curl -sf http://localhost:{{vars.port}}/health > /dev/null"
+
+[tasks.package]
+description = "Package binary for release"
+run = """
+GOOS=${GOOS:-$(go env GOOS)}
+GOARCH=${GOARCH:-$(go env GOARCH)}
+DIST=${DIST:-{{vars.dist_dir}}}
+tar -czvf ${DIST}/{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz -C {{vars.bin}} {{vars.bin_name}}
+"""
+
+[tasks.run]
+description = "Run webhook server"
+depends = ["ensure"]
+run = "{{vars.bin_path}} webhook {{vars.port}}"
+
+[tasks."run:poll"]
+description = "Run CF audit log polling"
+depends = ["ensure"]
+run = "{{vars.bin_path}} poll ${SYNC_CF_POLL_INTERVAL:-1m}"
+
+[tasks."run:tunnel"]
+description = "Run cloudflared quick tunnel"
+depends = ["ensure"]
+run = "{{vars.bin_path}} tunnel {{vars.port}}"
+
+[tasks.test]
+description = "Run tests"
+dir = "{{config_root}}"
+run = "go test -v ./..."
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf {{vars.bin}}"
+
+[tasks."clean:all"]
+description = "Clean everything"
+run = "rm -rf {{vars.bin}}"
