@@ -1,12 +1,8 @@
 min_version = "2025.1.0"
 
 [settings]
-# Skip GitHub attestation/SLSA checks — avoids API rate limits and
-# unreachable verification servers in restricted environments.
+# Skip attestation/SLSA checks — avoids API rate limits in restricted envs.
 # Checksum verification still runs.
-github_attestations = false
-
-[settings.github]
 github_attestations = false
 slsa = false
 
