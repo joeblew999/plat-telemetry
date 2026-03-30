@@ -365,18 +365,18 @@ description = "Start CI subsystem services"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$(go env GOOS)" == "windows" ]]; then
-  echo "Windows: starting services directly..."
-  mkdir -p nats/.data
-  nats-server --config nats/nats.conf &
-  echo $! > /tmp/nats-server.pid
-  echo "Started nats-server (pid $(cat /tmp/nats-server.pid))"
-else
-  for subsystem in $SUBSYSTEMS_CI; do
-    echo "Starting $subsystem..."
-    pitchfork start "$subsystem"
-  done
-fi
+echo "Platform: $(uname -s) / $(go env GOOS)"
+echo "pitchfork: $(command -v pitchfork)"
+pitchfork --version
+for subsystem in $SUBSYSTEMS_CI; do
+  echo "Starting $subsystem..."
+  pitchfork start "$subsystem" 2>&1 || {
+    echo "WARN: pitchfork start failed for $subsystem (exit $?)"
+    echo "Checking pitchfork logs..."
+    pitchfork logs "$subsystem" 2>&1 || true
+    exit 1
+  }
+done
 """
 
 [tasks."ci:health"]
@@ -385,9 +385,7 @@ run = """
 #!/usr/bin/env bash
 set -euo pipefail
 sleep 5
-if [[ "$(go env GOOS)" != "windows" ]]; then
-  pitchfork list
-fi
+pitchfork list 2>&1 || echo "WARN: pitchfork list failed"
 for subsystem in $SUBSYSTEMS_CI; do
   echo "Checking $subsystem..."
   mise run "$subsystem:health"
@@ -400,19 +398,9 @@ description = "Stop CI subsystem services"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-if [[ "$(go env GOOS)" == "windows" ]]; then
-  echo "Windows: stopping services directly..."
-  if [ -f /tmp/nats-server.pid ]; then
-    kill "$(cat /tmp/nats-server.pid)" 2>/dev/null || true
-    rm -f /tmp/nats-server.pid
-  fi
-  # Fallback: kill by name
-  taskkill //F //IM nats-server.exe 2>/dev/null || true
-else
-  for subsystem in $SUBSYSTEMS_CI; do
-    pitchfork stop "$subsystem" || true
-  done
-fi
+for subsystem in $SUBSYSTEMS_CI; do
+  pitchfork stop "$subsystem" || true
+done
 """
 
 [tasks."ci:test"]
