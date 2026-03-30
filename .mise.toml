@@ -1,5 +1,15 @@
 min_version = "2025.1.0"
 
+[settings]
+# Skip GitHub attestation/SLSA checks — avoids API rate limits and
+# unreachable verification servers in restricted environments.
+# Checksum verification still runs.
+github_attestations = false
+
+[settings.github]
+github_attestations = false
+slsa = false
+
 [tools]
 go = "1.26.1"
 "github:jdx/pitchfork" = "latest"

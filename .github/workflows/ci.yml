@@ -48,24 +48,38 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v2
-      - name: Build binaries
+
+      - name: Build
         run: mise run ci:build
         shell: bash
-      - name: Run tests
+
+      - name: Test
         run: mise run ci:test
         shell: bash
-      - name: Package binaries
+
+      - name: Package
         run: mise run ci:package
         shell: bash
-      - name: Start services (Linux/macOS only)
+
+      - name: Start services
+        if: runner.os != 'Windows'
+        run: mise run start
+        shell: bash
+
+      - name: Health check
         if: runner.os != 'Windows'
         run: |
-          mise run start &
-          sleep 10
-          mise run status || true
-          mise run stop || true
+          sleep 5
+          mise run status
+          mise run nats:health
         shell: bash
-      - name: Release binaries
+
+      - name: Stop services
+        if: runner.os != 'Windows' && always()
+        run: mise run stop
+        shell: bash
+
+      - name: Release
         if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && runner.os != 'Windows'
         run: mise run ci:release
         shell: bash
