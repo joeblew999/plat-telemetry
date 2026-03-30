@@ -1,0 +1,128 @@
+[vars]
+bin_name = "nats-server"
+upstream_repo = "https://github.com/nats-io/nats-server.git"
+version = "v2.10.24"
+src = "{{config_root}}/.src"
+bin = "{{config_root}}/.bin"
+bin_path = "{{config_root}}/.bin/nats-server"
+data = "{{config_root}}/.data"
+release_repo = "joeblew999/plat-telemetry"
+release_version = "latest"
+release_url = "https://github.com/joeblew999/plat-telemetry/releases/download/latest"
+dist_dir = "{{config_root}}/../.dist"
+
+[env]
+GOWORK = "off"
+
+# --- src: tasks ---
+
+[tasks."src:clone"]
+description = "Clone the upstream repository at pinned version"
+run = "test -d {{vars.src}} || git clone --branch {{vars.version}} --depth 1 {{vars.upstream_repo}} {{vars.src}}"
+
+[tasks."src:update"]
+description = "Fetch and checkout pinned version"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = ["git fetch --tags", "git checkout {{vars.version}}"]
+
+# --- bin: tasks ---
+
+[tasks."bin:build"]
+description = "Build nats-server binary"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+go build -o {{vars.bin_path}} .
+{
+  echo "commit: $(git -C {{vars.src}} rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(shasum -a 256 {{vars.bin_path}} | awk '{print $1}')"
+} > {{vars.bin}}/.version
+"""
+
+[tasks."bin:download"]
+description = "Download pre-built binary from release"
+run = """
+test -f {{vars.bin_path}} && exit 0
+mkdir -p {{vars.bin}}
+GOOS=$(go env GOOS)
+GOARCH=$(go env GOARCH)
+curl -L {{vars.release_url}}/{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz | tar xz -C {{vars.bin}}
+echo "{{vars.release_version}}" > {{vars.bin}}/.version
+"""
+
+# --- dev: tasks ---
+
+[tasks."dev:run"]
+description = "Run nats-server from source (development mode)"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = ["mkdir -p {{vars.data}}", "go run . --config {{config_root}}/nats.conf"]
+
+# --- service tasks (alphabetical) ---
+
+[tasks."config:version"]
+description = "Output the pinned version"
+run = "echo {{vars.version}}"
+quiet = true
+
+[tasks.deps]
+description = "Download dependencies"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = "go mod download"
+
+[tasks.ensure]
+description = "Ensure binary exists (build from source)"
+run = "test -f {{vars.bin_path}} || mise run -C {{config_root}} bin:build"
+
+[tasks.health]
+description = "Check if NATS is healthy"
+run = "curl -sf http://localhost:8222/healthz > /dev/null"
+
+[tasks.install]
+description = "Install nats-server binary"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = "go install ."
+
+[tasks.run]
+description = "Run nats-server binary"
+depends = ["ensure"]
+run = ["mkdir -p {{vars.data}}", "{{vars.bin_path}} --config {{config_root}}/nats.conf"]
+
+[tasks.test]
+description = "Run tests"
+depends = ["src:clone"]
+dir = "{{vars.src}}"
+run = "go test -v ./..."
+
+[tasks.package]
+description = "Package binary for release"
+run = """
+GOOS=${GOOS:-$(go env GOOS)}
+GOARCH=${GOARCH:-$(go env GOARCH)}
+DIST=${DIST:-{{vars.dist_dir}}}
+tar -czvf ${DIST}/{{vars.bin_name}}-${GOOS}-${GOARCH}.tar.gz -C {{vars.bin}} {{vars.bin_name}}
+"""
+
+# --- clean: tasks (alphabetical) ---
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf {{vars.bin}}"
+
+[tasks."clean:all"]
+description = "Clean everything (.src, .bin, .data)"
+run = "rm -rf {{vars.src}} {{vars.bin}} {{vars.data}}"
+
+[tasks."clean:data"]
+description = "Clean data directory"
+run = "rm -rf {{vars.data}}"
+
+[tasks."clean:src"]
+description = "Clean source directory"
+run = "rm -rf {{vars.src}}"

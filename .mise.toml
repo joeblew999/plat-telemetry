@@ -1,3 +1,86 @@
 [tools]
 go = "1.26.1"
-task = "3.49.1"
+
+[vars]
+release_repo = "joeblew999/plat-telemetry"
+release_version = "latest"
+dist_dir = "{{config_root}}/.dist"
+
+[env]
+_.file = ".env"
+
+# --- root orchestration tasks ---
+
+[tasks.default]
+description = "Show available tasks"
+run = "mise task ls"
+
+# --- nats: delegated tasks ---
+
+[tasks."nats:src:clone"]
+description = "Clone nats source"
+run = "mise run -C {{config_root}}/nats/ src:clone"
+
+[tasks."nats:src:update"]
+description = "Update nats source"
+run = "mise run -C {{config_root}}/nats/ src:update"
+
+[tasks."nats:bin:build"]
+description = "Build nats binary"
+run = "mise run -C {{config_root}}/nats/ bin:build"
+
+[tasks."nats:bin:download"]
+description = "Download nats binary"
+run = "mise run -C {{config_root}}/nats/ bin:download"
+
+[tasks."nats:dev:run"]
+description = "Run nats from source"
+run = "mise run -C {{config_root}}/nats/ dev:run"
+
+[tasks."nats:config:version"]
+description = "Output nats version"
+run = "mise run -C {{config_root}}/nats/ config:version"
+
+[tasks."nats:deps"]
+description = "Download nats dependencies"
+run = "mise run -C {{config_root}}/nats/ deps"
+
+[tasks."nats:ensure"]
+description = "Ensure nats binary exists"
+run = "mise run -C {{config_root}}/nats/ ensure"
+
+[tasks."nats:health"]
+description = "Check nats health"
+run = "mise run -C {{config_root}}/nats/ health"
+
+[tasks."nats:install"]
+description = "Install nats binary"
+run = "mise run -C {{config_root}}/nats/ install"
+
+[tasks."nats:run"]
+description = "Run nats binary"
+run = "mise run -C {{config_root}}/nats/ run"
+
+[tasks."nats:test"]
+description = "Run nats tests"
+run = "mise run -C {{config_root}}/nats/ test"
+
+[tasks."nats:package"]
+description = "Package nats binary"
+run = "mise run -C {{config_root}}/nats/ package"
+
+[tasks."nats:clean"]
+description = "Clean nats build artifacts"
+run = "mise run -C {{config_root}}/nats/ clean"
+
+[tasks."nats:clean:all"]
+description = "Clean everything for nats"
+run = "mise run -C {{config_root}}/nats/ clean:all"
+
+[tasks."nats:clean:data"]
+description = "Clean nats data"
+run = "mise run -C {{config_root}}/nats/ clean:data"
+
+[tasks."nats:clean:src"]
+description = "Clean nats source"
+run = "mise run -C {{config_root}}/nats/ clean:src"
