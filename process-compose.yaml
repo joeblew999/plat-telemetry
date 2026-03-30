@@ -10,7 +10,7 @@ env_file:
 
 processes:
   arc:
-    command: task arc:run
+    command: mise run arc:run
     working_dir: .
     shutdown:
       signal: 15
@@ -20,12 +20,12 @@ processes:
       backoff_seconds: 5
     readiness_probe:
       exec:
-        command: task arc:health
+        command: mise run arc:health
       initial_delay_seconds: 3
       period_seconds: 5
 
   sync-cf-worker:
-    command: task sync-cf-worker:run
+    command: mise run sync-cf-worker:run
     working_dir: .
     environment:
       - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN}
@@ -38,12 +38,12 @@ processes:
       backoff_seconds: 5
     readiness_probe:
       exec:
-        command: task sync-cf-worker:health
+        command: mise run sync-cf-worker:health
       initial_delay_seconds: 5
       period_seconds: 10
 
   docs:
-    command: task docs:run
+    command: mise run docs:run
     working_dir: .
     shutdown:
       signal: 15
@@ -53,12 +53,12 @@ processes:
       backoff_seconds: 5
     readiness_probe:
       exec:
-        command: task docs:health
+        command: mise run docs:health
       initial_delay_seconds: 5
       period_seconds: 5
 
   liftbridge:
-    command: task liftbridge:run
+    command: mise run liftbridge:run
     working_dir: .
     depends_on:
       nats:
@@ -71,12 +71,12 @@ processes:
       backoff_seconds: 3
     readiness_probe:
       exec:
-        command: task liftbridge:health
+        command: mise run liftbridge:health
       initial_delay_seconds: 3
       period_seconds: 5
 
   nats:
-    command: task nats:run
+    command: mise run nats:run
     working_dir: .
     shutdown:
       signal: 15
@@ -86,12 +86,12 @@ processes:
       backoff_seconds: 3
     readiness_probe:
       exec:
-        command: task nats:health
+        command: mise run nats:health
       initial_delay_seconds: 2
       period_seconds: 5
 
   sync-cf:
-    command: task sync-cf:run
+    command: mise run sync-cf:run
     working_dir: .
     environment:
       - CF_ACCOUNT_ID=${CF_ACCOUNT_ID}
@@ -105,12 +105,12 @@ processes:
       backoff_seconds: 5
     readiness_probe:
       exec:
-        command: task sync-cf:health
+        command: mise run sync-cf:health
       initial_delay_seconds: 3
       period_seconds: 10
 
   sync-gh:
-    command: task sync-gh:run
+    command: mise run sync-gh:run
     working_dir: .
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
@@ -122,12 +122,12 @@ processes:
       backoff_seconds: 5
     readiness_probe:
       exec:
-        command: task sync-gh:health
+        command: mise run sync-gh:health
       initial_delay_seconds: 3
       period_seconds: 10
 
   sync-gh-poller:
-    command: task sync-gh:run:poll
+    command: mise run sync-gh:run:poll
     working_dir: .
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
@@ -139,12 +139,12 @@ processes:
       backoff_seconds: 5
     readiness_probe:
       exec:
-        command: task sync-gh:health
+        command: mise run sync-gh:health
       initial_delay_seconds: 3
       period_seconds: 30
 
   sync-gh-taskfile-poller:
-    command: task sync-gh:run:poll-taskfiles
+    command: mise run sync-gh:run:poll-taskfiles
     working_dir: .
     shutdown:
       signal: 15
@@ -154,12 +154,12 @@ processes:
       backoff_seconds: 5
     readiness_probe:
       exec:
-        command: task sync-gh:health
+        command: mise run sync-gh:health
       initial_delay_seconds: 3
       period_seconds: 30
 
   telegraf:
-    command: task telegraf:run
+    command: mise run telegraf:run
     working_dir: .
     depends_on:
       arc:
@@ -174,6 +174,6 @@ processes:
       backoff_seconds: 5
     readiness_probe:
       exec:
-        command: task telegraf:health
+        command: mise run telegraf:health
       initial_delay_seconds: 3
       period_seconds: 5

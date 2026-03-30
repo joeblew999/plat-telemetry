@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v2
       - name: Sync GitHub state
-        run: task ci:sync
+        run: mise run ci:sync
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -45,14 +45,14 @@ jobs:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v2
       - name: Build binaries
-        run: task ci:build
+        run: mise run ci:build
       - name: Run tests
-        run: task ci:test
+        run: mise run ci:test
       - name: Package binaries
-        run: task ci:package
+        run: mise run ci:package
       - name: Release binaries
         if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
-        run: task ci:release
+        run: mise run ci:release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -64,6 +64,6 @@ jobs:
       - uses: actions/checkout@v5
       - uses: jdx/mise-action@v2
       - name: Deploy pages
-        run: task ci:pages:deploy
+        run: mise run ci:pages:deploy
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
