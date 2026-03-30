@@ -10,15 +10,18 @@ outputs = ["sync-gh/.bin/sync-gh"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
+EXE=$(go env GOEXE)
 mkdir -p .bin
-go build -o .bin/sync-gh .
-../sync-git/.bin/sync-git version-file .bin/sync-gh --src=..
+go build -o .bin/sync-gh${EXE} .
+../sync-git/.bin/sync-git${EXE} version-file .bin/sync-gh${EXE} --src=..
 """
 
 ["sync-gh:ensure"]
 description = "Ensure sync-gh binary exists"
 run = """
-[ -f sync-gh/.bin/sync-gh ] && exit 0
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+[ -f sync-gh/.bin/sync-gh${EXE} ] && exit 0
 mise run sync-gh:bin:build
 """
 
@@ -26,17 +29,29 @@ mise run sync-gh:bin:build
 description = "Run webhook server"
 depends = ["sync-gh:ensure"]
 env = { PORT = "9090" }
-run = "sync-gh/.bin/sync-gh webhook"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-gh/.bin/sync-gh${EXE} webhook
+"""
 
 ["sync-gh:run:poll"]
 description = "Run polling service for upstream repos"
 depends = ["sync-gh:ensure"]
-run = "sync-gh/.bin/sync-gh poll"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-gh/.bin/sync-gh${EXE} poll
+"""
 
 ["sync-gh:run:poll-taskfiles"]
 description = "Run Taskfile polling service"
 depends = ["sync-gh:ensure"]
-run = "sync-gh/.bin/sync-gh poll-taskfiles"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-gh/.bin/sync-gh${EXE} poll-taskfiles
+"""
 
 ["sync-gh:health"]
 description = "Check webhook server health"
@@ -45,7 +60,11 @@ run = "curl -sf http://localhost:9090/health > /dev/null"
 ["sync-gh:config:version"]
 description = "Output current version"
 depends = ["sync-gh:ensure", "sync-git:ensure"]
-run = "sync-git/.bin/sync-git version-file sync-gh/.bin/sync-gh --read"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-git/.bin/sync-git${EXE} version-file sync-gh/.bin/sync-gh${EXE} --read
+"""
 
 ["sync-gh:config:port"]
 description = "Output service port"
@@ -73,19 +92,28 @@ GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
 mkdir -p "$DIST"
-tar czf "$DIST/sync-gh-${GOOS}-${GOARCH}.tar.gz" -C sync-gh/.bin sync-gh .version
+EXE=$(go env GOEXE)
+tar czf "$DIST/sync-gh-${GOOS}-${GOARCH}.tar.gz" -C sync-gh/.bin sync-gh${EXE} .version
 """
 
 ["sync-gh:state"]
 description = "Capture GitHub state"
 depends = ["sync-gh:ensure"]
 usage = 'arg "repo" help="Repository (owner/repo)" default=""'
-run = 'sync-gh/.bin/sync-gh state ${usage_repo} --dir=.github/state'
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-gh/.bin/sync-gh${EXE} state ${usage_repo} --dir=.github/state
+"""
 
 ["sync-gh:state:show"]
 description = "Show captured GitHub state"
 depends = ["sync-gh:ensure"]
-run = "sync-gh/.bin/sync-gh state --show --dir=.github/state"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-gh/.bin/sync-gh${EXE} state --show --dir=.github/state
+"""
 
 ["sync-gh:clean"]
 description = "Clean built binaries"

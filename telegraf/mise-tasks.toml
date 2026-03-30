@@ -4,16 +4,20 @@
 description = "Clone upstream Telegraf repository"
 depends = ["sync-git:ensure"]
 run = """
+#!/usr/bin/env bash
 [ -d telegraf/.src ] && exit 0
-sync-git/.bin/sync-git clone https://github.com/Basekick-Labs/telegraf.git telegraf/.src "${TG_VERSION:-master}"
+EXE=$(go env GOEXE)
+sync-git/.bin/sync-git${EXE} clone https://github.com/Basekick-Labs/telegraf.git telegraf/.src "${TG_VERSION:-master}"
 """
 
 ["telegraf:src:update"]
 description = "Fetch and checkout pinned version"
 depends = ["telegraf:src:clone", "sync-git:ensure"]
 run = """
-sync-git/.bin/sync-git fetch telegraf/.src --tags
-sync-git/.bin/sync-git checkout telegraf/.src "${TG_VERSION:-master}"
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-git/.bin/sync-git${EXE} fetch telegraf/.src --tags
+sync-git/.bin/sync-git${EXE} checkout telegraf/.src "${TG_VERSION:-master}"
 """
 
 ["telegraf:bin:build"]
@@ -24,17 +28,20 @@ env = { GOWORK = "off" }
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-[ -f ../.bin/telegraf ] && exit 0
+EXE=$(go env GOEXE)
+[ -f ../.bin/telegraf${EXE} ] && exit 0
 mkdir -p ../.bin
 make build
-cp telegraf ../.bin/
-../../sync-git/.bin/sync-git version-file ../.bin/telegraf --src=../.src
+cp telegraf${EXE} ../.bin/
+../../sync-git/.bin/sync-git${EXE} version-file ../.bin/telegraf${EXE} --src=../.src
 """
 
 ["telegraf:ensure"]
 description = "Ensure telegraf binary exists"
 run = """
-[ -f telegraf/.bin/telegraf ] && exit 0
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+[ -f telegraf/.bin/telegraf${EXE} ] && exit 0
 mise run telegraf:bin:build
 """
 
@@ -42,8 +49,10 @@ mise run telegraf:bin:build
 description = "Run telegraf binary"
 depends = ["telegraf:ensure"]
 run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
 mkdir -p telegraf/.data
-telegraf/.bin/telegraf --config telegraf/telegraf.conf
+telegraf/.bin/telegraf${EXE} --config telegraf/telegraf.conf
 """
 
 ["telegraf:health"]
@@ -87,7 +96,8 @@ GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
 mkdir -p "$DIST"
-tar -czvf "$DIST/telegraf-${GOOS}-${GOARCH}.tar.gz" -C telegraf/.bin telegraf
+EXE=$(go env GOEXE)
+tar -czvf "$DIST/telegraf-${GOOS}-${GOARCH}.tar.gz" -C telegraf/.bin telegraf${EXE}
 """
 
 ["telegraf:clean"]

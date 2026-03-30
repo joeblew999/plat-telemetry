@@ -24,20 +24,23 @@ env = { GOWORK = "off" }
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-[ -f ../.bin/arc ] && exit 0
+EXE=$(go env GOEXE)
+[ -f ../.bin/arc${EXE} ] && exit 0
 mkdir -p ../.bin
-go build -o ../.bin/arc ./cmd/arc
+go build -o ../.bin/arc${EXE} ./cmd/arc
 {
   echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
   echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "checksum: $(sha256sum ../.bin/arc 2>/dev/null || shasum -a 256 ../.bin/arc | awk '{print $1}')"
+  echo "checksum: $(sha256sum ../.bin/arc${EXE} 2>/dev/null || shasum -a 256 ../.bin/arc${EXE} | awk '{print $1}')"
 } > ../.bin/.version
 """
 
 ["arc:ensure"]
 description = "Ensure arc binary exists"
 run = """
-[ -f arc/.bin/arc ] && exit 0
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+[ -f arc/.bin/arc${EXE} ] && exit 0
 mise run arc:bin:build
 """
 
@@ -45,8 +48,10 @@ mise run arc:bin:build
 description = "Run arc binary"
 depends = ["arc:ensure"]
 run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
 mkdir -p arc/.data
-arc/.bin/arc --config arc/arc.toml
+arc/.bin/arc${EXE} --config arc/arc.toml
 """
 
 ["arc:health"]
@@ -90,7 +95,8 @@ GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
 mkdir -p "$DIST"
-tar -czvf "$DIST/arc-${GOOS}-${GOARCH}.tar.gz" -C arc/.bin arc
+EXE=$(go env GOEXE)
+tar -czvf "$DIST/arc-${GOOS}-${GOARCH}.tar.gz" -C arc/.bin arc${EXE}
 """
 
 ["arc:clean"]

@@ -4,16 +4,20 @@
 description = "Clone Hugo upstream repository"
 depends = ["sync-git:ensure"]
 run = """
+#!/usr/bin/env bash
 [ -d docs/.src ] && exit 0
-sync-git/.bin/sync-git clone https://github.com/gohugoio/hugo.git docs/.src "${DOCS_VERSION:-v0.140.2}"
+EXE=$(go env GOEXE)
+sync-git/.bin/sync-git${EXE} clone https://github.com/gohugoio/hugo.git docs/.src "${DOCS_VERSION:-v0.140.2}"
 """
 
 ["docs:src:update"]
 description = "Fetch and checkout pinned version"
 depends = ["docs:src:clone", "sync-git:ensure"]
 run = """
-sync-git/.bin/sync-git fetch docs/.src --tags
-sync-git/.bin/sync-git checkout docs/.src "${DOCS_VERSION:-v0.140.2}"
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-git/.bin/sync-git${EXE} fetch docs/.src --tags
+sync-git/.bin/sync-git${EXE} checkout docs/.src "${DOCS_VERSION:-v0.140.2}"
 """
 
 ["docs:bin:build"]
@@ -24,10 +28,11 @@ env = { GOWORK = "off" }
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-[ -f ../.bin/hugo ] && exit 0
+EXE=$(go env GOEXE)
+[ -f ../.bin/hugo${EXE} ] && exit 0
 mkdir -p ../.bin
-go build -tags extended -o ../.bin/hugo .
-../../sync-git/.bin/sync-git version-file ../.bin/hugo --src=../.src
+go build -tags extended -o ../.bin/hugo${EXE} .
+../../sync-git/.bin/sync-git${EXE} version-file ../.bin/hugo${EXE} --src=../.src
 """
 
 ["docs:bin:download"]
@@ -36,31 +41,44 @@ depends = ["sync-git:ensure"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-[ -f docs/.bin/hugo ] && exit 0
+EXE=$(go env GOEXE)
+[ -f docs/.bin/hugo${EXE} ] && exit 0
 GOOS="$(go env GOOS)"
 GOARCH="$(go env GOARCH)"
 VERSION_NUM="${DOCS_VERSION#v}"
 mkdir -p docs/.bin
-if [ "$GOOS" = "darwin" ]; then
+if [ "$GOOS" = "windows" ]; then
+  ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.zip"
+  curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" -o /tmp/hugo.zip
+  unzip -o /tmp/hugo.zip hugo.exe -d docs/.bin
+  rm -f /tmp/hugo.zip
+elif [ "$GOOS" = "darwin" ]; then
   ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-universal.tar.gz"
+  curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" | tar xz -C docs/.bin hugo
 else
   ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.tar.gz"
+  curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" | tar xz -C docs/.bin hugo
 fi
-curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" | tar xz -C docs/.bin hugo
-sync-git/.bin/sync-git version-file docs/.bin/hugo --version="${DOCS_VERSION}"
+sync-git/.bin/sync-git${EXE} version-file docs/.bin/hugo${EXE} --version="${DOCS_VERSION}"
 """
 
 ["docs:ensure"]
 description = "Ensure Hugo binary exists"
 run = """
-[ -f docs/.bin/hugo ] && exit 0
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+[ -f docs/.bin/hugo${EXE} ] && exit 0
 mise run docs:bin:download
 """
 
 ["docs:run"]
 description = "Run Hugo dev server"
 depends = ["docs:ensure"]
-run = "docs/.bin/hugo server -D --bind 0.0.0.0 --port 1313 -s docs"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+docs/.bin/hugo${EXE} server -D --bind 0.0.0.0 --port 1313 -s docs
+"""
 
 ["docs:health"]
 description = "Check Hugo server health"
@@ -69,12 +87,20 @@ run = "curl -sf http://localhost:1313/plat-telemetry/ > /dev/null"
 ["docs:build"]
 description = "Build Hugo static site"
 depends = ["docs:ensure"]
-run = "docs/.bin/hugo --minify -s docs -d .dist"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+docs/.bin/hugo${EXE} --minify -s docs -d .dist
+"""
 
 ["docs:test"]
 description = "Check Hugo build works"
 depends = ["docs:ensure"]
-run = "docs/.bin/hugo --minify -s docs -d .dist"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+docs/.bin/hugo${EXE} --minify -s docs -d .dist
+"""
 
 ["docs:deps"]
 description = "No dependencies for Hugo docs"

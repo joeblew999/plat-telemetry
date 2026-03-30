@@ -87,15 +87,10 @@ run = """
 set -euo pipefail
 echo "=== Binary Version Verification ==="
 ERRORS=0
-
-declare -A BINARIES
-BINARIES[arc]="arc"
-BINARIES[liftbridge]="liftbridge"
-BINARIES[telegraf]="telegraf"
+EXE=$(go env GOEXE)
 
 for subsystem in arc liftbridge telegraf; do
-  BINARY_NAME="${BINARIES[$subsystem]}"
-  BINARY_PATH="$subsystem/.bin/$BINARY_NAME"
+  BINARY_PATH="$subsystem/.bin/${subsystem}${EXE}"
   if [ ! -f "$BINARY_PATH" ]; then
     echo "FAIL $subsystem: Binary not found at $BINARY_PATH"
     ERRORS=$((ERRORS + 1))
@@ -402,7 +397,8 @@ depends = ["sync-gh:ensure"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-sync-gh/.bin/sync-gh state "$GITHUB_REPOSITORY" --dir=.github/state
+EXE=$(go env GOEXE)
+sync-gh/.bin/sync-gh${EXE} state "$GITHUB_REPOSITORY" --dir=.github/state
 git config user.name "github-actions[bot]"
 git config user.email "github-actions[bot]@users.noreply.github.com"
 git add .github/state/

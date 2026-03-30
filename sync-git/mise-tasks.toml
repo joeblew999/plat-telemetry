@@ -9,22 +9,29 @@ outputs = ["sync-git/.bin/sync-git"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
+EXE=$(go env GOEXE)
 mkdir -p .bin
-go build -o .bin/sync-git .
-.bin/sync-git version-file .bin/sync-git --src=..
+go build -o .bin/sync-git${EXE} .
+.bin/sync-git${EXE} version-file .bin/sync-git${EXE} --src=..
 """
 
 ["sync-git:ensure"]
 description = "Ensure sync-git binary exists"
 run = """
-[ -f sync-git/.bin/sync-git ] && exit 0
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+[ -f sync-git/.bin/sync-git${EXE} ] && exit 0
 mise run sync-git:bin:build
 """
 
 ["sync-git:config:version"]
 description = "Output current version"
 depends = ["sync-git:ensure"]
-run = "sync-git/.bin/sync-git version-file sync-git/.bin/sync-git --read"
+run = """
+#!/usr/bin/env bash
+EXE=$(go env GOEXE)
+sync-git/.bin/sync-git${EXE} version-file sync-git/.bin/sync-git${EXE} --read
+"""
 
 ["sync-git:deps"]
 description = "Download Go dependencies"
@@ -44,11 +51,12 @@ depends = ["sync-git:bin:build"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
+EXE=$(go env GOEXE)
 GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
 mkdir -p "$DIST"
-tar czf "$DIST/sync-git-${GOOS}-${GOARCH}.tar.gz" -C sync-git/.bin sync-git .version
+tar czf "$DIST/sync-git-${GOOS}-${GOARCH}.tar.gz" -C sync-git/.bin sync-git${EXE} .version
 """
 
 ["sync-git:clean"]

@@ -26,21 +26,24 @@ env = { GOWORK = "off" }
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-[ -f ../.bin/nats-server ] && exit 0
+EXE=$(go env GOEXE)
+[ -f ../.bin/nats-server${EXE} ] && exit 0
 mkdir -p ../.bin
-go build -o ../.bin/nats-server .
+go build -o ../.bin/nats-server${EXE} .
 {
   echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
   echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "checksum: $(sha256sum ../.bin/nats-server 2>/dev/null || shasum -a 256 ../.bin/nats-server | awk '{print $1}')"
+  echo "checksum: $(sha256sum ../.bin/nats-server${EXE} 2>/dev/null || shasum -a 256 ../.bin/nats-server${EXE} | awk '{print $1}')"
 } > ../.bin/.version
 """
 
 ["nats:ensure"]
 description = "Ensure nats-server is available (mise-managed)"
 run = """
+#!/usr/bin/env bash
 command -v nats-server >/dev/null 2>&1 && exit 0
-[ -f nats/.bin/nats-server ] && exit 0
+EXE=$(go env GOEXE)
+[ -f nats/.bin/nats-server${EXE} ] && exit 0
 echo "nats-server not found. Run: mise install"
 exit 1
 """
@@ -95,17 +98,18 @@ GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
 mkdir -p "$DIST"
 # Prefer mise-managed binary, fall back to local build
+EXE=$(go env GOEXE)
 if command -v nats-server >/dev/null 2>&1; then
   BIN_PATH="$(command -v nats-server)"
-elif [ -f nats/.bin/nats-server ]; then
-  BIN_PATH="nats/.bin/nats-server"
+elif [ -f nats/.bin/nats-server${EXE} ]; then
+  BIN_PATH="nats/.bin/nats-server${EXE}"
 else
   echo "nats-server not found"
   exit 1
 fi
 TMPDIR=$(mktemp -d)
-cp "$BIN_PATH" "$TMPDIR/nats-server"
-tar -czvf "$DIST/nats-server-${GOOS}-${GOARCH}.tar.gz" -C "$TMPDIR" nats-server
+cp "$BIN_PATH" "$TMPDIR/nats-server${EXE}"
+tar -czvf "$DIST/nats-server-${GOOS}-${GOARCH}.tar.gz" -C "$TMPDIR" nats-server${EXE}
 rm -rf "$TMPDIR"
 """
 
