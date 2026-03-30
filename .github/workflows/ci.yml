@@ -71,12 +71,10 @@ jobs:
         shell: bash
 
       - name: Start services
-        if: runner.os != 'Windows'
         run: mise run start
         shell: bash
 
       - name: Health check
-        if: runner.os != 'Windows'
         run: |
           sleep 5
           mise run status
@@ -84,12 +82,12 @@ jobs:
         shell: bash
 
       - name: Stop services
-        if: runner.os != 'Windows' && always()
+        if: always()
         run: mise run stop
         shell: bash
 
       - name: Release
-        if: (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && runner.os != 'Windows'
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
         run: mise run ci:release
         shell: bash
 
