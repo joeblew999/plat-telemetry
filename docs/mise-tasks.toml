@@ -1,0 +1,97 @@
+# Docs - Hugo static site (build hugo extended from source)
+
+["docs:src:clone"]
+description = "Clone Hugo upstream repository"
+depends = ["sync-git:ensure"]
+run = """
+[ -d docs/.src ] && exit 0
+sync-git/.bin/sync-git clone https://github.com/gohugoio/hugo.git docs/.src "${DOCS_VERSION:-v0.140.2}"
+"""
+
+["docs:src:update"]
+description = "Fetch and checkout pinned version"
+depends = ["docs:src:clone", "sync-git:ensure"]
+run = """
+sync-git/.bin/sync-git fetch docs/.src --tags
+sync-git/.bin/sync-git checkout docs/.src "${DOCS_VERSION:-v0.140.2}"
+"""
+
+["docs:bin:build"]
+description = "Build Hugo extended binary"
+depends = ["docs:src:clone", "sync-git:ensure"]
+dir = "docs/.src"
+env = { GOWORK = "off" }
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+[ -f ../.bin/hugo ] && exit 0
+mkdir -p ../.bin
+go build -tags extended -o ../.bin/hugo .
+../../sync-git/.bin/sync-git version-file ../.bin/hugo --src=../.src
+"""
+
+["docs:bin:download"]
+description = "Download pre-built Hugo binary"
+depends = ["sync-git:ensure"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+[ -f docs/.bin/hugo ] && exit 0
+GOOS="$(go env GOOS)"
+GOARCH="$(go env GOARCH)"
+VERSION_NUM="${DOCS_VERSION#v}"
+mkdir -p docs/.bin
+if [ "$GOOS" = "darwin" ]; then
+  ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-universal.tar.gz"
+else
+  ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.tar.gz"
+fi
+curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" | tar xz -C docs/.bin hugo
+sync-git/.bin/sync-git version-file docs/.bin/hugo --version="${DOCS_VERSION}"
+"""
+
+["docs:ensure"]
+description = "Ensure Hugo binary exists"
+run = """
+[ -f docs/.bin/hugo ] && exit 0
+mise run docs:bin:download
+"""
+
+["docs:run"]
+description = "Run Hugo dev server"
+depends = ["docs:ensure"]
+run = "docs/.bin/hugo server -D --bind 0.0.0.0 --port 1313 -s docs"
+
+["docs:health"]
+description = "Check Hugo server health"
+run = "curl -sf http://localhost:1313/plat-telemetry/ > /dev/null"
+
+["docs:build"]
+description = "Build Hugo static site"
+depends = ["docs:ensure"]
+run = "docs/.bin/hugo --minify -s docs -d .dist"
+
+["docs:test"]
+description = "Check Hugo build works"
+depends = ["docs:ensure"]
+run = "docs/.bin/hugo --minify -s docs -d .dist"
+
+["docs:deps"]
+description = "No dependencies for Hugo docs"
+run = 'echo "Hugo docs have no dependencies"'
+
+["docs:clean"]
+description = "Clean site output"
+run = "rm -rf docs/.dist"
+
+["docs:clean:bin"]
+description = "Clean Hugo binary"
+run = "rm -rf docs/.bin"
+
+["docs:clean:src"]
+description = "Clean Hugo source"
+run = "rm -rf docs/.src"
+
+["docs:clean:all"]
+description = "Clean everything"
+run = "rm -rf docs/.src docs/.bin docs/.dist docs/.data docs/.hugo_build.lock"

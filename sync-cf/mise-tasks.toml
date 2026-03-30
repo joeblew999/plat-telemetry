@@ -1,0 +1,75 @@
+# sync-cf - build from in-repo Go code
+
+["sync-cf:bin:build"]
+description = "Build sync-cf binary"
+dir = "sync-cf"
+env = { GOWORK = "off" }
+sources = ["sync-cf/**/*.go", "sync-cf/go.mod", "sync-cf/go.sum"]
+outputs = ["sync-cf/.bin/sync-cf"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p .bin
+go build -o .bin/sync-cf .
+{
+  echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(sha256sum .bin/sync-cf 2>/dev/null || shasum -a 256 .bin/sync-cf | awk '{print $1}')"
+} > .bin/.version
+"""
+
+["sync-cf:ensure"]
+description = "Ensure sync-cf binary exists"
+run = """
+[ -f sync-cf/.bin/sync-cf ] && exit 0
+mise run sync-cf:bin:build
+"""
+
+["sync-cf:run"]
+description = "Run webhook server"
+depends = ["sync-cf:ensure"]
+run = "sync-cf/.bin/sync-cf webhook 9092"
+
+["sync-cf:health"]
+description = "Check service health"
+run = "curl -sf http://localhost:9092/health > /dev/null"
+
+["sync-cf:config:port"]
+description = "Output service port"
+run = 'echo "9092"'
+
+["sync-cf:config:version"]
+description = "Output version"
+run = 'cat sync-cf/.bin/.version 2>/dev/null || echo "not built"'
+
+["sync-cf:deps"]
+description = "Download Go dependencies"
+dir = "sync-cf"
+env = { GOWORK = "off" }
+run = "go mod download"
+
+["sync-cf:test"]
+description = "Run tests"
+dir = "sync-cf"
+env = { GOWORK = "off" }
+run = "go test -v ./..."
+
+["sync-cf:package"]
+description = "Package binary for release"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+GOOS="${GOOS:-$(go env GOOS)}"
+GOARCH="${GOARCH:-$(go env GOARCH)}"
+DIST="${DIST:-$DIST_DIR}"
+mkdir -p "$DIST"
+tar -czvf "$DIST/sync-cf-${GOOS}-${GOARCH}.tar.gz" -C sync-cf/.bin sync-cf
+"""
+
+["sync-cf:clean"]
+description = "Clean build artifacts"
+run = "rm -rf sync-cf/.bin"
+
+["sync-cf:clean:all"]
+description = "Clean everything"
+run = "rm -rf sync-cf/.bin"

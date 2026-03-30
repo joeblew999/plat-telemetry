@@ -1,0 +1,56 @@
+# sync-git - build from in-repo Go code
+
+["sync-git:bin:build"]
+description = "Build sync-git binary"
+dir = "sync-git"
+env = { GOWORK = "off" }
+sources = ["sync-git/**/*.go", "sync-git/go.mod", "sync-git/go.sum"]
+outputs = ["sync-git/.bin/sync-git"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p .bin
+go build -o .bin/sync-git .
+.bin/sync-git version-file .bin/sync-git --src=..
+"""
+
+["sync-git:ensure"]
+description = "Ensure sync-git binary exists"
+run = """
+[ -f sync-git/.bin/sync-git ] && exit 0
+mise run sync-git:bin:build
+"""
+
+["sync-git:config:version"]
+description = "Output current version"
+depends = ["sync-git:ensure"]
+run = "sync-git/.bin/sync-git version-file sync-git/.bin/sync-git --read"
+
+["sync-git:deps"]
+description = "Download Go dependencies"
+dir = "sync-git"
+env = { GOWORK = "off" }
+run = "go mod download"
+
+["sync-git:test"]
+description = "Run unit tests"
+dir = "sync-git"
+env = { GOWORK = "off" }
+run = "go test -v ./..."
+
+["sync-git:package"]
+description = "Package binary for release"
+depends = ["sync-git:bin:build"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+GOOS="${GOOS:-$(go env GOOS)}"
+GOARCH="${GOARCH:-$(go env GOARCH)}"
+DIST="${DIST:-$DIST_DIR}"
+mkdir -p "$DIST"
+tar czf "$DIST/sync-git-${GOOS}-${GOARCH}.tar.gz" -C sync-git/.bin sync-git .version
+"""
+
+["sync-git:clean"]
+description = "Clean built binaries"
+run = "rm -rf sync-git/.bin"

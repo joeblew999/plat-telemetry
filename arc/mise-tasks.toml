@@ -1,0 +1,110 @@
+# Arc - build from source (basekick-labs/arc fork)
+
+["arc:src:clone"]
+description = "Clone upstream Arc repository"
+run = """
+[ -d arc/.src ] && exit 0
+git clone --branch "${ARC_VERSION:-main}" --depth 1 https://github.com/basekick-labs/arc.git arc/.src
+"""
+
+["arc:src:update"]
+description = "Fetch and checkout pinned version"
+depends = ["arc:src:clone"]
+dir = "arc/.src"
+run = """
+git fetch origin "${ARC_VERSION:-main}"
+git checkout "${ARC_VERSION:-main}"
+"""
+
+["arc:bin:build"]
+description = "Build arc binary"
+depends = ["arc:src:clone"]
+dir = "arc/.src"
+env = { GOWORK = "off" }
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+[ -f ../.bin/arc ] && exit 0
+mkdir -p ../.bin
+go build -o ../.bin/arc ./cmd/arc
+{
+  echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(sha256sum ../.bin/arc 2>/dev/null || shasum -a 256 ../.bin/arc | awk '{print $1}')"
+} > ../.bin/.version
+"""
+
+["arc:ensure"]
+description = "Ensure arc binary exists"
+run = """
+[ -f arc/.bin/arc ] && exit 0
+mise run arc:bin:build
+"""
+
+["arc:run"]
+description = "Run arc binary"
+depends = ["arc:ensure"]
+run = """
+mkdir -p arc/.data
+arc/.bin/arc --config arc/arc.toml
+"""
+
+["arc:health"]
+description = "Check Arc health"
+run = "curl -sf http://localhost:8000/health > /dev/null"
+
+["arc:dev:run"]
+description = "Run arc from source (development)"
+depends = ["arc:src:clone"]
+dir = "arc/.src"
+env = { GOWORK = "off" }
+run = """
+mkdir -p ../.data
+go run ./cmd/arc --config ../arc.toml
+"""
+
+["arc:config:version"]
+description = "Output pinned version"
+run = 'echo "${ARC_VERSION:-main}"'
+
+["arc:deps"]
+description = "Download dependencies"
+depends = ["arc:src:clone"]
+dir = "arc/.src"
+env = { GOWORK = "off" }
+run = "go mod download"
+
+["arc:test"]
+description = "Run tests"
+depends = ["arc:src:clone"]
+dir = "arc/.src"
+env = { GOWORK = "off" }
+run = "go test -v ./..."
+
+["arc:package"]
+description = "Package binary for release"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+GOOS="${GOOS:-$(go env GOOS)}"
+GOARCH="${GOARCH:-$(go env GOARCH)}"
+DIST="${DIST:-$DIST_DIR}"
+mkdir -p "$DIST"
+tar -czvf "$DIST/arc-${GOOS}-${GOARCH}.tar.gz" -C arc/.bin arc
+"""
+
+["arc:clean"]
+description = "Clean build artifacts"
+run = "rm -rf arc/.bin"
+
+["arc:clean:all"]
+description = "Clean everything"
+run = "rm -rf arc/.src arc/.bin arc/.data"
+
+["arc:clean:data"]
+description = "Clean data directory"
+run = "rm -rf arc/.data"
+
+["arc:clean:src"]
+description = "Clean source directory"
+run = "rm -rf arc/.src"

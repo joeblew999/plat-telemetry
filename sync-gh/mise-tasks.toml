@@ -1,0 +1,100 @@
+# sync-gh - build from in-repo Go code
+
+["sync-gh:bin:build"]
+description = "Build sync-gh binary"
+depends = ["sync-git:ensure"]
+dir = "sync-gh"
+env = { GOWORK = "off" }
+sources = ["sync-gh/**/*.go", "sync-gh/go.mod", "sync-gh/go.sum"]
+outputs = ["sync-gh/.bin/sync-gh"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p .bin
+go build -o .bin/sync-gh .
+../sync-git/.bin/sync-git version-file .bin/sync-gh --src=..
+"""
+
+["sync-gh:ensure"]
+description = "Ensure sync-gh binary exists"
+run = """
+[ -f sync-gh/.bin/sync-gh ] && exit 0
+mise run sync-gh:bin:build
+"""
+
+["sync-gh:run"]
+description = "Run webhook server"
+depends = ["sync-gh:ensure"]
+env = { PORT = "9090" }
+run = "sync-gh/.bin/sync-gh webhook"
+
+["sync-gh:run:poll"]
+description = "Run polling service for upstream repos"
+depends = ["sync-gh:ensure"]
+run = "sync-gh/.bin/sync-gh poll"
+
+["sync-gh:run:poll-taskfiles"]
+description = "Run Taskfile polling service"
+depends = ["sync-gh:ensure"]
+run = "sync-gh/.bin/sync-gh poll-taskfiles"
+
+["sync-gh:health"]
+description = "Check webhook server health"
+run = "curl -sf http://localhost:9090/health > /dev/null"
+
+["sync-gh:config:version"]
+description = "Output current version"
+depends = ["sync-gh:ensure", "sync-git:ensure"]
+run = "sync-git/.bin/sync-git version-file sync-gh/.bin/sync-gh --read"
+
+["sync-gh:config:port"]
+description = "Output service port"
+run = 'echo "9090"'
+
+["sync-gh:deps"]
+description = "Download Go dependencies"
+dir = "sync-gh"
+env = { GOWORK = "off" }
+run = "go mod download"
+
+["sync-gh:test"]
+description = "Run unit tests"
+dir = "sync-gh"
+env = { GOWORK = "off" }
+run = "go test -v ./..."
+
+["sync-gh:package"]
+description = "Package binary for release"
+depends = ["sync-gh:bin:build"]
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+GOOS="${GOOS:-$(go env GOOS)}"
+GOARCH="${GOARCH:-$(go env GOARCH)}"
+DIST="${DIST:-$DIST_DIR}"
+mkdir -p "$DIST"
+tar czf "$DIST/sync-gh-${GOOS}-${GOARCH}.tar.gz" -C sync-gh/.bin sync-gh .version
+"""
+
+["sync-gh:state"]
+description = "Capture GitHub state"
+depends = ["sync-gh:ensure"]
+usage = 'arg "repo" help="Repository (owner/repo)" default=""'
+run = 'sync-gh/.bin/sync-gh state ${usage_repo} --dir=.github/state'
+
+["sync-gh:state:show"]
+description = "Show captured GitHub state"
+depends = ["sync-gh:ensure"]
+run = "sync-gh/.bin/sync-gh state --show --dir=.github/state"
+
+["sync-gh:clean"]
+description = "Clean built binaries"
+run = "rm -rf sync-gh/.bin"
+
+["sync-gh:clean:all"]
+description = "Clean everything"
+run = "rm -rf sync-gh/.bin sync-gh/.data"
+
+["sync-gh:clean:data"]
+description = "Clean runtime data"
+run = "rm -rf sync-gh/.data"

@@ -1,0 +1,60 @@
+# sync-cf-worker - Cloudflare Workers (WASM build)
+
+["sync-cf-worker:bin:build"]
+description = "Build WASM binary"
+dir = "sync-cf-worker"
+env = { GOWORK = "off", GOOS = "js", GOARCH = "wasm" }
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p .bin
+GOOS=js GOARCH=wasm go build -o .bin/app.wasm .
+{
+  echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(sha256sum .bin/app.wasm 2>/dev/null || shasum -a 256 .bin/app.wasm | awk '{print $1}')"
+} > .bin/.version
+"""
+
+["sync-cf-worker:ensure"]
+description = "Ensure WASM binary exists"
+run = """
+[ -f sync-cf-worker/.bin/app.wasm ] && exit 0
+mise run sync-cf-worker:bin:build
+"""
+
+["sync-cf-worker:run"]
+description = "Run worker locally (via wrangler)"
+depends = ["sync-cf-worker:ensure"]
+dir = "sync-cf-worker"
+run = "npx wrangler dev"
+
+["sync-cf-worker:health"]
+description = "Check worker health"
+run = "curl -sf http://localhost:8787/health > /dev/null"
+
+["sync-cf-worker:deploy"]
+description = "Deploy to Cloudflare Workers"
+depends = ["sync-cf-worker:ensure"]
+dir = "sync-cf-worker"
+run = "npx wrangler deploy"
+
+["sync-cf-worker:deps"]
+description = "Download dependencies"
+dir = "sync-cf-worker"
+env = { GOWORK = "off" }
+run = "go mod download"
+
+["sync-cf-worker:test"]
+description = "Run tests"
+dir = "sync-cf-worker"
+env = { GOWORK = "off" }
+run = "go test -v ./..."
+
+["sync-cf-worker:clean"]
+description = "Clean build artifacts"
+run = "rm -rf sync-cf-worker/.bin"
+
+["sync-cf-worker:clean:all"]
+description = "Clean everything"
+run = "rm -rf sync-cf-worker/.bin"

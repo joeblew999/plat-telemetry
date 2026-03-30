@@ -1,0 +1,115 @@
+# gh CLI - installed via mise ubi (cli/cli)
+# The gh binary is on PATH after `mise install`.
+# These tasks provide GitHub management utilities.
+
+["gh:ensure"]
+description = "Ensure gh CLI is available (mise-managed)"
+run = """
+command -v gh >/dev/null 2>&1 && exit 0
+echo "gh not found. Run: mise install"
+exit 1
+"""
+
+["gh:runs:list"]
+description = "List recent workflow runs"
+run = 'gh run list --repo "$RELEASE_REPO" --limit 20'
+
+["gh:runs:clean"]
+description = "Delete old workflow runs (keeps last 10)"
+usage = 'arg "keep" help="Number of runs to keep" default="10"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+KEEP="${usage_keep}"
+echo "Fetching workflow runs for $RELEASE_REPO..."
+RUNS=$(gh run list --repo "$RELEASE_REPO" --limit 100 --json databaseId --jq '.[].databaseId')
+COUNT=0
+DELETED=0
+for RUN_ID in $RUNS; do
+  COUNT=$((COUNT + 1))
+  [ $COUNT -le "$KEEP" ] && continue
+  echo "Deleting run $RUN_ID..."
+  gh run delete "$RUN_ID" --repo "$RELEASE_REPO" || true
+  DELETED=$((DELETED + 1))
+  [ $((DELETED % 5)) -eq 0 ] && sleep 1
+done
+echo "OK Deleted $DELETED runs, kept $KEEP"
+"""
+
+["gh:releases:list"]
+description = "List all releases"
+run = 'gh release list --repo "$RELEASE_REPO"'
+
+["gh:releases:clean"]
+description = "Delete old releases (keeps last N)"
+usage = 'arg "keep" help="Number of releases to keep" default="10"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+KEEP="${usage_keep}"
+echo "Fetching releases for $RELEASE_REPO..."
+RELEASES=$(gh release list --repo "$RELEASE_REPO" --limit 100 --json tagName --jq '.[].tagName')
+COUNT=0
+DELETED=0
+for TAG in $RELEASES; do
+  COUNT=$((COUNT + 1))
+  [ $COUNT -le "$KEEP" ] && continue
+  echo "Deleting release $TAG..."
+  gh release delete "$TAG" --repo "$RELEASE_REPO" --yes --cleanup-tag || true
+  DELETED=$((DELETED + 1))
+  [ $((DELETED % 5)) -eq 0 ] && sleep 1
+done
+echo "OK Deleted $DELETED releases, kept $KEEP"
+"""
+
+["gh:pages:status"]
+description = "Show GitHub Pages status"
+run = """gh api "repos/$RELEASE_REPO/pages" --jq '{build_type: .build_type, branch: .source.branch, url: .html_url}'"""
+
+["gh:pages:enable"]
+description = "Enable GitHub Pages with Actions"
+run = """
+#!/usr/bin/env bash
+if gh api "repos/$RELEASE_REPO/pages" 2>/dev/null | grep -q '"build_type":"workflow"'; then
+  echo "OK GitHub Pages already enabled with Actions"
+else
+  echo "Enabling GitHub Pages..."
+  gh api "repos/$RELEASE_REPO/pages" -X POST -f build_type=workflow 2>/dev/null || \
+  gh api "repos/$RELEASE_REPO/pages" -X PUT -f build_type=workflow
+  echo "OK GitHub Pages enabled"
+fi
+"""
+
+["gh:pages:deploy"]
+description = "Deploy docs to gh-pages branch"
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+DIST="${DIST:-docs/.dist}"
+echo "Deploying to gh-pages branch..."
+DEPLOY_DIR=$(mktemp -d)
+trap "rm -rf $DEPLOY_DIR" EXIT
+cp -r "$DIST"/* "$DEPLOY_DIR"/
+cd "$DEPLOY_DIR"
+git init
+git config user.name "GitHub Actions"
+git config user.email "actions@github.com"
+git add -A
+git commit -m "Deploy docs $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+git push -f "https://github.com/$RELEASE_REPO.git" HEAD:gh-pages
+echo "OK Deployed to gh-pages"
+"""
+
+["gh:pages:setup:branch"]
+description = "Configure Pages to deploy from gh-pages"
+run = """
+gh api "repos/$RELEASE_REPO/pages" -X PUT \
+  -f build_type=legacy \
+  -f 'source[branch]=gh-pages' \
+  -f 'source[path]=/'
+echo "OK Pages configured for gh-pages"
+"""
+
+["gh:clean"]
+description = "No build artifacts for mise-managed gh"
+run = 'echo "gh is mise-managed, nothing to clean"'
