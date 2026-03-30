@@ -1,6 +1,6 @@
 module github.com/joeblew99/plat-telemetry/sync-git
 
-go 1.25.5
+go 1.26.1
 
 require github.com/go-git/go-git/v5 v5.16.4
 
