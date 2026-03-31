@@ -506,6 +506,7 @@ fi
 
 [tasks."ci:release"]
 description = "Upload CI subsystem binaries to GitHub releases"
+run_windows = 'Write-Host "SKIP ci:release: GitHub release upload not supported from Windows CI VM (gh not authenticated)"'
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
