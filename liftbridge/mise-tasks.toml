@@ -94,10 +94,13 @@ set -euo pipefail
 GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
-if command -v cygpath >/dev/null 2>&1; then DIST="$(cygpath -u "$DIST")"; fi
-mkdir -p "$DIST"
 EXE=$(go env GOEXE)
-tar -czvf "$DIST/liftbridge-${GOOS}-${GOARCH}.tar.gz" -C liftbridge/.bin liftbridge${EXE}
+mkdir -p "$DIST"
+if [ "$GOOS" = "windows" ]; then
+  ouch compress -y "liftbridge/.bin/liftbridge${EXE}" "$DIST/liftbridge-${GOOS}-${GOARCH}.zip"
+else
+  ouch compress -y "liftbridge/.bin/liftbridge${EXE}" "$DIST/liftbridge-${GOOS}-${GOARCH}.tar.gz"
+fi
 """
 
 ["liftbridge:clean"]

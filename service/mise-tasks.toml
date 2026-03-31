@@ -5,13 +5,18 @@ description = "Build service binary"
 dir = "service"
 env = { GOWORK = "off" }
 sources = ["service/*.go", "service/go.mod", "service/go.sum"]
-outputs = ["service/.bin/plat-telemetry-svc"]
+outputs = ["service/.bin/.version"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
 EXE=$(go env GOEXE)
 mkdir -p .bin
 go build -o .bin/plat-telemetry-svc${EXE} .
+{
+  echo "commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+  echo "timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  echo "checksum: $(sha256sum .bin/plat-telemetry-svc${EXE} 2>/dev/null || shasum -a 256 .bin/plat-telemetry-svc${EXE} | awk '{print $1}')"
+} > .bin/.version
 """
 
 ["service:ensure"]

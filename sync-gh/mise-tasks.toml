@@ -6,7 +6,7 @@ depends = ["sync-git:ensure"]
 dir = "sync-gh"
 env = { GOWORK = "off" }
 sources = ["sync-gh/**/*.go", "sync-gh/go.mod", "sync-gh/go.sum"]
-outputs = ["sync-gh/.bin/sync-gh"]
+outputs = ["sync-gh/.bin/.version"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -91,9 +91,13 @@ set -euo pipefail
 GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
-mkdir -p "$DIST"
 EXE=$(go env GOEXE)
-tar czf "$DIST/sync-gh-${GOOS}-${GOARCH}.tar.gz" -C sync-gh/.bin sync-gh${EXE} .version
+mkdir -p "$DIST"
+if [ "$GOOS" = "windows" ]; then
+  ouch compress -y "sync-gh/.bin/sync-gh${EXE}" "sync-gh/.bin/.version" "$DIST/sync-gh-${GOOS}-${GOARCH}.zip"
+else
+  ouch compress -y "sync-gh/.bin/sync-gh${EXE}" "sync-gh/.bin/.version" "$DIST/sync-gh-${GOOS}-${GOARCH}.tar.gz"
+fi
 """
 
 ["sync-gh:state"]

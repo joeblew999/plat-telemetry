@@ -5,7 +5,7 @@ description = "Build sync-cf binary"
 dir = "sync-cf"
 env = { GOWORK = "off" }
 sources = ["sync-cf/**/*.go", "sync-cf/go.mod", "sync-cf/go.sum"]
-outputs = ["sync-cf/.bin/sync-cf"]
+outputs = ["sync-cf/.bin/.version"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -69,10 +69,13 @@ set -euo pipefail
 GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
-if command -v cygpath >/dev/null 2>&1; then DIST="$(cygpath -u "$DIST")"; fi
-mkdir -p "$DIST"
 EXE=$(go env GOEXE)
-tar -czvf "$DIST/sync-cf-${GOOS}-${GOARCH}.tar.gz" -C sync-cf/.bin sync-cf${EXE}
+mkdir -p "$DIST"
+if [ "$GOOS" = "windows" ]; then
+  ouch compress -y "sync-cf/.bin/sync-cf${EXE}" "$DIST/sync-cf-${GOOS}-${GOARCH}.zip"
+else
+  ouch compress -y "sync-cf/.bin/sync-cf${EXE}" "$DIST/sync-cf-${GOOS}-${GOARCH}.tar.gz"
+fi
 """
 
 ["sync-cf:clean"]

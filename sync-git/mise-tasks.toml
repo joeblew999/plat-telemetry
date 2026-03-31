@@ -5,7 +5,7 @@ description = "Build sync-git binary"
 dir = "sync-git"
 env = { GOWORK = "off" }
 sources = ["sync-git/**/*.go", "sync-git/go.mod", "sync-git/go.sum"]
-outputs = ["sync-git/.bin/sync-git", "sync-git/.bin/sync-git.exe"]
+outputs = ["sync-git/.bin/.version"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -51,12 +51,16 @@ depends = ["sync-git:bin:build"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-EXE=$(go env GOEXE)
 GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
+EXE=$(go env GOEXE)
 mkdir -p "$DIST"
-tar czf "$DIST/sync-git-${GOOS}-${GOARCH}.tar.gz" -C sync-git/.bin sync-git${EXE} .version
+if [ "$GOOS" = "windows" ]; then
+  ouch compress -y "sync-git/.bin/sync-git${EXE}" "sync-git/.bin/.version" "$DIST/sync-git-${GOOS}-${GOARCH}.zip"
+else
+  ouch compress -y "sync-git/.bin/sync-git${EXE}" "sync-git/.bin/.version" "$DIST/sync-git-${GOOS}-${GOARCH}.tar.gz"
+fi
 """
 
 ["sync-git:clean"]

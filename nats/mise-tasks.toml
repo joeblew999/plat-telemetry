@@ -96,29 +96,20 @@ set -euo pipefail
 GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
-mkdir -p "$DIST"
-# Prefer mise-managed binary, fall back to local build
 EXE=$(go env GOEXE)
+mkdir -p "$DIST"
 if command -v nats-server >/dev/null 2>&1; then
   BIN_PATH="$(command -v nats-server)"
-elif [ -f nats/.bin/nats-server${EXE} ]; then
+elif [ -f "nats/.bin/nats-server${EXE}" ]; then
   BIN_PATH="nats/.bin/nats-server${EXE}"
 else
-  echo "nats-server not found"
-  exit 1
+  echo "nats-server not found"; exit 1
 fi
-TMPDIR=$(mktemp -d)
-cp "$BIN_PATH" "$TMPDIR/nats-server${EXE}"
-# On Windows (git-bash/MSYS), tar cannot handle C:\ paths — convert to POSIX
-if command -v cygpath >/dev/null 2>&1; then
-  DIST_TAR="$(cygpath -u "$DIST")"
-  TMPDIR_TAR="$(cygpath -u "$TMPDIR")"
+if [ "$GOOS" = "windows" ]; then
+  ouch compress -y "$BIN_PATH" "$DIST/nats-server-${GOOS}-${GOARCH}.zip"
 else
-  DIST_TAR="$DIST"
-  TMPDIR_TAR="$TMPDIR"
+  ouch compress -y "$BIN_PATH" "$DIST/nats-server-${GOOS}-${GOARCH}.tar.gz"
 fi
-tar -czvf "$DIST_TAR/nats-server-${GOOS}-${GOARCH}.tar.gz" -C "$TMPDIR_TAR" nats-server${EXE}
-rm -rf "$TMPDIR"
 """
 
 ["nats:clean"]
