@@ -25,6 +25,15 @@ description = "Build telegraf binary"
 depends = ["telegraf:src:clone", "sync-git:ensure"]
 dir = "telegraf/.src"
 env = { GOWORK = "off" }
+run_windows = '''
+if (Test-Path "../.bin/telegraf.exe") { exit 0 }
+New-Item -ItemType Directory -Force -Path "../.bin" | Out-Null
+$env:CGO_ENABLED = "0"
+go build -o "telegraf.exe" ./cmd/telegraf
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Copy-Item "telegraf.exe" "../.bin/telegraf.exe"
+& "..\..\sync-git\.bin\sync-git.exe" version-file "..\\.bin\\telegraf.exe" --src="..\\.src"
+'''
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
