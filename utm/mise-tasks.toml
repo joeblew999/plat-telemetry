@@ -479,8 +479,7 @@ run = ""
 # ── Clean ─────────────────────────────────────────────────────────────────────
 
 ["utm:clean"]
-description = "Destroy all UTM VMs"
-depends = ["utm:ensure"]
+description = "Destroy all UTM VMs via vagrant (best-effort)"
 dir = "utm"
 run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
 run = """
@@ -489,12 +488,12 @@ if [ "$(uname)" != "Darwin" ]; then
   echo "SKIP utm: UTM is macOS-only"
   exit 0
 fi
-vagrant destroy -f
+vagrant destroy -f 2>/dev/null || echo "WARN vagrant destroy failed — run utm:clean:registry to force clean"
 """
 
 ["utm:clean:all"]
-description = "Destroy all VMs and remove all boxes"
-depends = ["utm:clean", "utm:box:clean"]
+description = "Destroy all VMs, remove all boxes, and clean registry"
+depends = ["utm:clean:registry", "utm:box:clean"]
 run = ""
 
 ["utm:clean:registry"]
@@ -517,12 +516,12 @@ VAGRANT_DIR="$(pwd)/utm"
 
 echo "=== Reconciling UTM registry (removing entries with missing bundles) ==="
 if [ -f "$PREFS" ]; then
-  # Use defaults read (goes through cfprefsd, no binary data) to get registry UUIDs
-  UUIDS=$(defaults read com.utmapp.UTM Registry 2>/dev/null \
-    | grep -oE '"[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}" =' \
+  # UTM is stopped — read plist file directly, use strings to strip binary Bookmark data
+  # Match only top-level registry dict keys (UUID = Dict pattern)
+  UUIDS=$(/usr/libexec/PlistBuddy -c "Print Registry" "$PREFS" 2>/dev/null | strings \
+    | grep -E '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12} = Dict' \
     | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' || true)
   for uuid in $UUIDS; do
-    # PlistBuddy on leaf string keys is safe — no binary data at this level
     BUNDLE=$(/usr/libexec/PlistBuddy -c "Print Registry:${uuid}:Package:Path" "$PREFS" 2>/dev/null || true)
     if [ -z "$BUNDLE" ]; then continue; fi
     if [ ! -e "$BUNDLE" ]; then
