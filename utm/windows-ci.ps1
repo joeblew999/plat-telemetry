@@ -23,11 +23,13 @@ if (-not (Test-Path $mise)) {
 Set-Location $repoDir
 
 # Pull latest code so .mise.toml changes (new tools etc.) are reflected
-# Redirect stderr to stdout - git writes fetch info to stderr which creates
-# PowerShell error records under $ErrorActionPreference = "Stop"
+# git writes remote fetch info to stderr; lower ErrorActionPreference so
+# native command stderr does not throw under Stop mode
 Write-Host "Pulling latest repo changes..."
-git reset --hard HEAD 2>&1 | Write-Host
-git pull 2>&1 | Write-Host
+$ErrorActionPreference = "Continue"
+git reset --hard HEAD
+git pull
+$ErrorActionPreference = "Stop"
 if ($LASTEXITCODE -ne 0) { Write-Error "git pull failed"; exit 1 }
 
 Write-Host "=== Windows CI ==="
