@@ -107,7 +107,7 @@ if (Test-Path "$repoDir\.git") {
     Write-Host "Cloning repository..."
     if (Test-Path $repoDir) { Remove-Item $repoDir -Recurse -Force }
     # git clone writes "Cloning into..." to stderr; suppress to avoid NativeCommandError
-    git clone $repoUrl $repoDir 2>$null
+    git clone --quiet $repoUrl $repoDir
     Set-Location $repoDir
 }
 
@@ -157,12 +157,15 @@ Stop-Service WSearch -ErrorAction SilentlyContinue
 Set-Service WSearch -StartupType Disabled
 
 # Defender exclusions — prevent scanning of Go build dirs (would crash VM during compilation)
+# C:\tmp is included because vagrant uploads provision scripts there; Defender locks PS1 files
 Add-MpPreference -ExclusionPath "C:\plat-telemetry" -ErrorAction SilentlyContinue
 Add-MpPreference -ExclusionPath "C:\Users\vagrant\go" -ErrorAction SilentlyContinue
 Add-MpPreference -ExclusionPath "C:\Users\vagrant\AppData\Local\mise" -ErrorAction SilentlyContinue
 Add-MpPreference -ExclusionPath "C:\ProgramData\mise" -ErrorAction SilentlyContinue
+Add-MpPreference -ExclusionPath "C:\tmp" -ErrorAction SilentlyContinue
 Add-MpPreference -ExclusionProcess "go.exe" -ErrorAction SilentlyContinue
 Add-MpPreference -ExclusionProcess "bash.exe" -ErrorAction SilentlyContinue
+Add-MpPreference -ExclusionProcess "mise.exe" -ErrorAction SilentlyContinue
 
 Write-Host "OK auto-restart/sleep/indexer/defender-exclusions configured"
 
@@ -171,10 +174,16 @@ Write-Host "OK auto-restart/sleep/indexer/defender-exclusions configured"
 Set-Location $repoDir
 Write-Host "Running mise trust + install..."
 $env:PATH = "C:\ProgramData\mise\bin;C:\Program Files\Git\bin;$env:PATH"
-# 2>$null suppresses mise's WARN messages (e.g. mise-shim.exe not found)
-# which go to stderr and cause NativeCommandError under $ErrorActionPreference="Stop"
-& "C:\ProgramData\mise\bin\mise.exe" trust 2>$null
-& "C:\ProgramData\mise\bin\mise.exe" install 2>$null
+# mise writes WARN messages to stderr; under ErrorActionPreference=Stop any native exe
+# stderr triggers a terminating NativeCommandError. Use try/catch to swallow it.
+# mise trust: harmless warning "No untrusted config files found" when already trusted.
+try { & "C:\ProgramData\mise\bin\mise.exe" trust 2>&1 | Out-Null } catch { Write-Host "OK mise trust (already trusted)" }
+# mise install: errors are real failures — let it propagate, but merge stderr->stdout
+# so WinRM sees errors as stdout text, not as NativeCommandError.
+$ErrorActionPreference = 'Continue'
+& "C:\ProgramData\mise\bin\mise.exe" install 2>&1 | ForEach-Object { Write-Host $_ }
+if ($LASTEXITCODE -ne 0) { throw "mise install failed with exit code $LASTEXITCODE" }
+$ErrorActionPreference = 'Stop'
 Write-Host "mise all tools are installed"
 
 Write-Host ""

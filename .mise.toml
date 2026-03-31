@@ -18,7 +18,9 @@ go = "1.26.1"
 
 [env]
 GOWORK = "off"
-GOFLAGS = "-p=4"
+# -p=1: serialize package compilation to avoid OOM on Windows ARM64 VM (8GB RAM)
+# Liftbridge/telegraf OOM with -p=4 or -p=2 due to compiler memory pressure.
+GOFLAGS = "-p=1"
 RELEASE_REPO = "joeblew999/plat-telemetry"
 RELEASE_VERSION = "latest"
 DIST_DIR = "{{config_root}}/.dist"
