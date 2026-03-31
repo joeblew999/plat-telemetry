@@ -142,8 +142,9 @@ if (Test-Path $gitUsrBin) {
     Write-Host "WARN $gitUsrBin not found - bash scripts may not find mise"
 }
 
-# -- 3d. Disable auto-restart, sleep, and search indexer ----------------------
-# Prevents Windows Update from rebooting mid-CI and sleep from killing WinRM
+# -- 3d. Disable auto-restart, sleep, search indexer, Defender scanning -------
+# Prevents Windows Update from rebooting mid-CI, sleep from killing WinRM,
+# and Windows Defender from scanning Go build artifacts (causes VM crash mid-build)
 
 $auPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
 New-Item -Path $auPath -Force | Out-Null
@@ -154,7 +155,16 @@ powercfg /change hibernate-timeout-ac 0
 powercfg /change monitor-timeout-ac 0
 Stop-Service WSearch -ErrorAction SilentlyContinue
 Set-Service WSearch -StartupType Disabled
-Write-Host "OK auto-restart/sleep/indexer disabled"
+
+# Defender exclusions — prevent scanning of Go build dirs (would crash VM during compilation)
+Add-MpPreference -ExclusionPath "C:\plat-telemetry" -ErrorAction SilentlyContinue
+Add-MpPreference -ExclusionPath "C:\Users\vagrant\go" -ErrorAction SilentlyContinue
+Add-MpPreference -ExclusionPath "C:\Users\vagrant\AppData\Local\mise" -ErrorAction SilentlyContinue
+Add-MpPreference -ExclusionPath "C:\ProgramData\mise" -ErrorAction SilentlyContinue
+Add-MpPreference -ExclusionProcess "go.exe" -ErrorAction SilentlyContinue
+Add-MpPreference -ExclusionProcess "bash.exe" -ErrorAction SilentlyContinue
+
+Write-Host "OK auto-restart/sleep/indexer/defender-exclusions configured"
 
 # -- 4. Install mise tools (go, nats-server, pitchfork, gh) -------------------
 
