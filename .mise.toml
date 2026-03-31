@@ -23,7 +23,7 @@ RELEASE_VERSION = "latest"
 DIST_DIR = "{{config_root}}/.dist"
 SUBSYSTEMS_BUILD = "arc docs liftbridge nats telegraf"
 SUBSYSTEMS_RELEASE = "arc liftbridge nats sync-cf sync-gh sync-git telegraf"
-SUBSYSTEMS_CI = "nats"
+SUBSYSTEMS_CI = "nats arc"
 # Subsystem versions
 NATS_VERSION = "v2.10.24"
 ARC_VERSION = "v26.03.2"
