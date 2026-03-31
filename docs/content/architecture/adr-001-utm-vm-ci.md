@@ -6,7 +6,38 @@ status: Accepted
 
 ## Status
 
-Accepted
+Accepted — in progress (Windows provisioned, Linux VMs not yet booted)
+
+## Current State (2026-03-31)
+
+| VM | State | Provisioned | GPU | CI run |
+|----|-------|------------|-----|--------|
+| windows | stopped | YES — mise + git + telegraf built | virtio-gpu-gl-pci | NOT YET |
+| alpine | never created | NO | n/a | NOT YET |
+| ubuntu | never created | NO | n/a | NOT YET |
+| debian | never created | NO | n/a | NOT YET |
+
+**What is working:**
+- `utm:deps` / `utm:deps:delete` — install/uninstall UTM + Vagrant + plugin
+- `utm:up` / `utm:down` — start/stop VMs
+- `utm:wait` — poll until all builds finish inside VM (critical for Windows where telegraf takes ~9 min)
+- `utm:diag` — show all 5 sources of truth side-by-side
+- `utm:state:restore` — auto-heal vagrant id file before every lifecycle task
+- `utm:clean:registry` — nuclear reconcile when state is badly broken
+- `utm:copy:to` / `utm:copy:from` — copy files host↔VM
+- `utm:windows:ci` — task exists, not yet run end-to-end
+- `utm:linux:ci` — task exists, not yet run (no Linux VM ever booted)
+- Windows provision: all bugs fixed (see decisions 3, 4, 6 below)
+
+**What is NOT yet validated:**
+- `VM=windows mise run utm:windows:ci` — full `mise run ci` inside Windows
+- Any Linux VM boot + provision + CI run
+- `utm:copy:to` / `utm:copy:from` — written but not tested
+
+**Next steps:**
+1. `VM=windows mise run utm:windows:ci` — validate full Windows CI
+2. `VM=alpine mise run utm:up` — first Alpine boot (downloads box, runs linux-provision.sh)
+3. `VM=alpine mise run utm:linux:ci` — validate Linux CI path
 
 ## Context
 
