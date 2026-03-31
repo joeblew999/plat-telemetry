@@ -39,6 +39,7 @@ else
     echo "FAIL could not find vagrant dmg in brew cache"
     exit 1
   fi
+  hdiutil detach /Volumes/Vagrant -quiet 2>/dev/null || true  # detach if already mounted
   hdiutil attach "$DMG" -nobrowse -quiet
   osascript -e 'do shell script "installer -pkg /Volumes/Vagrant/vagrant.pkg -target /" with administrator privileges'
   hdiutil detach /Volumes/Vagrant -quiet 2>/dev/null || true
@@ -172,7 +173,16 @@ if [ -z "${VM:-}" ]; then
   echo "FAIL VM is required — e.g. VM=alpine mise run utm:down"
   exit 1
 fi
-vagrant halt "$VM"
+UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
+if [ -z "$UUID" ]; then
+  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
+fi
+if [ -n "$UUID" ]; then
+  utmctl stop "$UUID" 2>/dev/null || true
+  echo "OK VM stopped uuid=$UUID"
+else
+  vagrant halt "$VM" 2>/dev/null || echo "WARN could not stop VM — may already be stopped"
+fi
 """
 
 ["utm:ssh"]
@@ -224,7 +234,19 @@ if [ -z "${VM:-}" ]; then
   echo "FAIL VM is required — e.g. VM=alpine mise run utm:destroy"
   exit 1
 fi
-vagrant destroy -f "$VM"
+UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
+if [ -z "$UUID" ]; then
+  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
+fi
+if [ -n "$UUID" ]; then
+  vagrant destroy -f "$VM" 2>/dev/null || true
+  utmctl stop "$UUID" 2>/dev/null || true
+  utmctl delete "$UUID" 2>/dev/null || true
+  rm -rf ".vagrant/machines/${VM}"
+  echo "OK VM destroyed uuid=$UUID"
+else
+  echo "WARN no VM found for $VM"
+fi
 """
 
 ["utm:provision"]
@@ -304,7 +326,6 @@ vagrant box list
 
 ["utm:box:clean"]
 description = "Remove all downloaded Vagrant boxes"
-depends = ["utm:ensure"]
 run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
 run = """
 #!/usr/bin/env bash
