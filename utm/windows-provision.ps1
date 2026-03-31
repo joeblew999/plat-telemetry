@@ -28,7 +28,7 @@ if (-not (Test-Path "C:\Windows\System32\VCRUNTIME140.dll")) {
     $vcDest = "$env:TEMP\vc_redist.arm64.exe"
     $wc.DownloadFile($vcUrl, $vcDest)
     Start-Process -FilePath $vcDest -ArgumentList "/quiet /norestart" -Wait
-    Remove-Item $vcDest
+    Remove-Item $vcDest -ErrorAction SilentlyContinue
     Write-Host "OK Visual C++ redistributable installed"
 } else {
     Write-Host "OK Visual C++ redistributable already present"

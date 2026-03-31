@@ -382,9 +382,12 @@ if [ "$(uname)" != "Darwin" ]; then
 fi
 VM=windows mise run utm:up
 echo "Running 'mise run ci' inside Windows VM..."
-# vagrant provision passes DOPPLER_TOKEN via Vagrantfile env: block
-# windows-ci.ps1 reads $env:DOPPLER_TOKEN to inject secrets via doppler
-vagrant provision windows --provision-with ci
+# Use vagrant winrm (not vagrant provision) — vagrant provision destroys the VM
+# on WinRM failure; vagrant winrm just returns exit code with no VM lifecycle cleanup.
+vagrant winrm -s powershell -c "
+  Set-Location 'C:\\plat-telemetry\\utm'
+  & .\\windows-ci.ps1
+" windows
 echo "OK Windows CI passed"
 """
 
