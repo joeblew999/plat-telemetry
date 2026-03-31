@@ -24,6 +24,7 @@ Set-Location $repoDir
 
 # Pull latest code so .mise.toml changes (new tools etc.) are reflected
 Write-Host "Pulling latest repo changes..."
+git reset --hard HEAD
 git pull
 
 Write-Host "=== Windows CI ==="
