@@ -1,5 +1,7 @@
 # CLAUDE
 
+Some dependencies have cross platform binary releases and some do not. this is why we use the following system. Arc, for example, we have to build from source, buts NATS we do not. But either way its a sytem and so we have the ability to do source or binary.
+
 ## 1. Core Principles
 
 ### 1.1 Behavior
