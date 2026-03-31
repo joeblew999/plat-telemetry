@@ -23,6 +23,9 @@ Vagrant.configure("2") do |config|
     vm.vm.provider :utm do |utm|
       utm.name = "plat-ubuntu"
     end
+    vm.vm.provision "setup", type: "shell", privileged: false, path: "linux-provision.sh"
+    vm.vm.provision "ci", type: "shell", run: "never", privileged: false, path: "linux-ci.sh",
+      env: { "DOPPLER_TOKEN" => ENV.fetch("DOPPLER_TOKEN", "") }
   end
 
   config.vm.define "debian", autostart: false do |vm|
@@ -32,6 +35,9 @@ Vagrant.configure("2") do |config|
     vm.vm.provider :utm do |utm|
       utm.name = "plat-debian"
     end
+    vm.vm.provision "setup", type: "shell", privileged: false, path: "linux-provision.sh"
+    vm.vm.provision "ci", type: "shell", run: "never", privileged: false, path: "linux-ci.sh",
+      env: { "DOPPLER_TOKEN" => ENV.fetch("DOPPLER_TOKEN", "") }
   end
 
   config.vm.define "alpine", autostart: false do |vm|
@@ -44,6 +50,9 @@ Vagrant.configure("2") do |config|
       utm.name = "plat-alpine"
       utm.memory = 2048
     end
+    vm.vm.provision "setup", type: "shell", privileged: false, path: "linux-provision.sh"
+    vm.vm.provision "ci", type: "shell", run: "never", privileged: false, path: "linux-ci.sh",
+      env: { "DOPPLER_TOKEN" => ENV.fetch("DOPPLER_TOKEN", "") }
   end
 
   # =============================================================================

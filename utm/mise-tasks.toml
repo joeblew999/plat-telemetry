@@ -373,6 +373,48 @@ vagrant winrm -s powershell -c "
 echo "OK Windows CI passed"
 """
 
+["utm:linux:ci"]
+description = "Run 'mise run ci' inside a Linux UTM VM (VM=ubuntu|debian|alpine)"
+depends = ["utm:ensure", "utm:state:restore"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${VM:-}" ]; then
+  echo "FAIL VM is required — e.g. VM=alpine mise run utm:linux:ci"
+  exit 1
+fi
+VM=${VM} mise run utm:up
+echo "Running 'mise run ci' inside ${VM} VM..."
+# vagrant provision passes DOPPLER_TOKEN via Vagrantfile env: block
+vagrant provision "$VM" --provision-with ci
+echo "OK Linux CI passed on ${VM}"
+"""
+
+["utm:linux:shell"]
+description = "Open an interactive SSH session in a Linux UTM VM (VM=ubuntu|debian|alpine)"
+depends = ["utm:ensure", "utm:state:restore"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${VM:-}" ]; then
+  echo "FAIL VM is required — e.g. VM=alpine mise run utm:linux:shell"
+  exit 1
+fi
+vagrant ssh "$VM"
+"""
+
 ["utm:windows:shell"]
 description = "Open an interactive WinRM PowerShell session in the Windows VM"
 depends = ["utm:ensure"]
