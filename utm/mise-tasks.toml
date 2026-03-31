@@ -25,6 +25,7 @@ if [ -d "/Applications/UTM.app" ] || command -v utmctl >/dev/null 2>&1; then
 else
   echo "Installing UTM..."
   brew install --cask utm
+  pkill -x UTM 2>/dev/null || true  # kill if brew auto-launched it
   echo "OK UTM installed"
 fi
 if command -v vagrant >/dev/null 2>&1; then
@@ -543,7 +544,6 @@ if [ -f "$INDEX" ]; then
   echo "  reset vagrant global index"
 fi
 
-open -a UTM
 echo "OK UTM registry cleaned — run VM=windows mise run utm:up to start fresh"
 """
 
