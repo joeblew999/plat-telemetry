@@ -13,6 +13,7 @@ go = "1.26.1"
 "github:nats-io/nats-server" = "2.10.24"
 "github:Basekick-Labs/arc" = "26.03.2"
 "ubi:ouch-org/ouch" = "latest"  # ubi required: ouch has no arm64 macOS release, ubi picks x86_64 + Rosetta
+"github:DopplerHQ/cli" = "3.75.3"
 # packer: macOS-only (UTM box building), install manually if needed: brew install packer
 
 [env]
