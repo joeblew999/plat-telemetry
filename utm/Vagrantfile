@@ -61,12 +61,13 @@ Vagrant.configure("2") do |config|
 
   config.vm.define "windows", autostart: false do |vm|
     vm.vm.box = "utm/windows-11"
-    vm.vm.hostname = "windows"
+    # No hostname — setting it causes Windows to reboot mid-provision, which breaks WinRM timing
     vm.vm.communicator = "winrm"
     vm.winrm.username = "vagrant"
     vm.winrm.password = "vagrant"
     vm.winrm.transport = :plaintext
     vm.winrm.basic_auth_only = true
+    vm.winrm.timeout = 300
     vm.vm.synced_folder ".", "/vagrant", disabled: true
 
     vm.vm.network "forwarded_port", guest: 5985, host: 55985, id: "winrm"
@@ -76,6 +77,18 @@ Vagrant.configure("2") do |config|
       utm.memory = 8192
       utm.cpus = 4
       utm.check_guest_additions = false
+    end
+
+    # Enable hardware GPU acceleration after VM is created from box.
+    # virtio-gpu-gl-pci = host Metal/GPU rendering — prevents UTM from saving VM state to disk.
+    # virtio-ramfb (the box default) is a software framebuffer that allows state saving (bad).
+    vm.trigger.after :up do |t|
+      t.info = "Enabling hardware GPU acceleration (virtio-gpu-gl-pci)..."
+      t.run = { inline: <<~SHELL
+        BUNDLE=~/Library/Containers/com.utmapp.UTM/Data/Documents/plat-windows.utm/config.plist
+        /usr/libexec/PlistBuddy -c "Set Display:0:Hardware virtio-gpu-gl-pci" "$BUNDLE" && echo "OK GPU acceleration enabled"
+      SHELL
+      }
     end
 
     # Install mise, git, clone repo, run mise install (runs on first boot)

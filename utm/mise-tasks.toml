@@ -226,6 +226,76 @@ else
 fi
 """
 
+["utm:wait"]
+description = "Wait until all builds/installs finish inside the VM (VM=name)"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then echo "SKIP utm: UTM is macOS-only"; exit 0; fi
+if [ -z "${VM:-}" ]; then echo "FAIL VM is required — e.g. VM=windows mise run utm:wait"; exit 1; fi
+echo "Waiting for all builds/installs to finish in VM=$VM ..."
+while true; do
+  if [ "$VM" = "windows" ]; then
+    PS='Get-Process | Where-Object { $_.Name -match "^go$|winget|msiexec" } | Select-Object -ExpandProperty Name | Sort-Object -Unique'
+    PROCS=$(vagrant winrm -s powershell -c "$PS" "$VM" 2>/dev/null | tr -d '\r' | grep -v '^$' || true)
+  else
+    PROCS=$(vagrant ssh "$VM" -c "pgrep -la go 2>/dev/null | grep -vE 'pgrep|sshd|bash|vagrant' || pgrep -la apt 2>/dev/null || pgrep -la apk 2>/dev/null || true" 2>/dev/null | grep -v '^$' || true)
+  fi
+  if [ -z "$PROCS" ]; then
+    echo "OK VM=$VM is idle — all builds/installs done"
+    break
+  fi
+  echo "  still running: $(echo "$PROCS" | tr '\n' ' ') — checking again in 15s..."
+  sleep 15
+done
+"""
+
+["utm:copy:to"]
+description = "Copy a file from host to VM (VM=name SRC=local-path DEST=remote-path)"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then echo "SKIP utm: UTM is macOS-only"; exit 0; fi
+if [ -z "${VM:-}" ]; then echo "FAIL VM is required — e.g. VM=alpine SRC=./file DEST=/tmp/file mise run utm:copy:to"; exit 1; fi
+if [ -z "${SRC:-}" ]; then echo "FAIL SRC is required"; exit 1; fi
+if [ -z "${DEST:-}" ]; then echo "FAIL DEST is required"; exit 1; fi
+if [ "$VM" = "windows" ]; then
+  vagrant winrm-upload "$SRC" "$DEST" windows
+else
+  vagrant upload "$SRC" "$DEST" "$VM"
+fi
+echo "OK copied $SRC -> $VM:$DEST"
+"""
+
+["utm:copy:from"]
+description = "Copy a file from VM to host (VM=name SRC=remote-path DEST=local-path)"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then echo "SKIP utm: UTM is macOS-only"; exit 0; fi
+if [ -z "${VM:-}" ]; then echo "FAIL VM is required — e.g. VM=alpine SRC=/tmp/file DEST=./file mise run utm:copy:from"; exit 1; fi
+if [ -z "${SRC:-}" ]; then echo "FAIL SRC is required"; exit 1; fi
+if [ -z "${DEST:-}" ]; then echo "FAIL DEST is required"; exit 1; fi
+if [ "$VM" = "windows" ]; then
+  # WinRM: base64-encode the file inside the VM, decode on host
+  B64=$(vagrant winrm -s powershell -c "[Convert]::ToBase64String([IO.File]::ReadAllBytes('$SRC'))" windows 2>/dev/null | tr -d '\r\n')
+  echo "$B64" | base64 -d > "$DEST"
+else
+  # SSH: pipe file contents via vagrant ssh
+  vagrant ssh "$VM" -c "cat '$SRC'" > "$DEST"
+fi
+echo "OK copied $VM:$SRC -> $DEST"
+"""
+
 ["utm:ssh"]
 description = "SSH into a Linux UTM VM (VM=ubuntu|debian|alpine)"
 depends = ["utm:ensure"]
