@@ -109,7 +109,15 @@ else
 fi
 TMPDIR=$(mktemp -d)
 cp "$BIN_PATH" "$TMPDIR/nats-server${EXE}"
-tar -czvf "$DIST/nats-server-${GOOS}-${GOARCH}.tar.gz" -C "$TMPDIR" nats-server${EXE}
+# On Windows (git-bash/MSYS), tar cannot handle C:\ paths — convert to POSIX
+if command -v cygpath >/dev/null 2>&1; then
+  DIST_TAR="$(cygpath -u "$DIST")"
+  TMPDIR_TAR="$(cygpath -u "$TMPDIR")"
+else
+  DIST_TAR="$DIST"
+  TMPDIR_TAR="$TMPDIR"
+fi
+tar -czvf "$DIST_TAR/nats-server-${GOOS}-${GOARCH}.tar.gz" -C "$TMPDIR_TAR" nats-server${EXE}
 rm -rf "$TMPDIR"
 """
 

@@ -5,7 +5,7 @@ description = "Build sync-git binary"
 dir = "sync-git"
 env = { GOWORK = "off" }
 sources = ["sync-git/**/*.go", "sync-git/go.mod", "sync-git/go.sum"]
-outputs = ["sync-git/.bin/sync-git"]
+outputs = ["sync-git/.bin/sync-git", "sync-git/.bin/sync-git.exe"]
 run = """
 #!/usr/bin/env bash
 set -euo pipefail

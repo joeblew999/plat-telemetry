@@ -94,6 +94,7 @@ set -euo pipefail
 GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
+if command -v cygpath >/dev/null 2>&1; then DIST="$(cygpath -u "$DIST")"; fi
 mkdir -p "$DIST"
 EXE=$(go env GOEXE)
 tar -czvf "$DIST/liftbridge-${GOOS}-${GOARCH}.tar.gz" -C liftbridge/.bin liftbridge${EXE}

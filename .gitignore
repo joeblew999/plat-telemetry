@@ -32,6 +32,10 @@ coverage.html
 .DS_Store
 Thumbs.db
 
+# Vagrant
+*.box
+utm/.vagrant/
+
 # Project-specific patterns
 /.data/
 /data/

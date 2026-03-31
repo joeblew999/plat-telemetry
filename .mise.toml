@@ -11,6 +11,9 @@ go = "1.26.1"
 "github:jdx/pitchfork" = "latest"
 "github:cli/cli" = "2.83.2"
 "github:nats-io/nats-server" = "2.10.24"
+"github:Basekick-Labs/arc" = "26.03.2"
+"ubi:ouch-org/ouch" = "latest"  # ubi required: ouch has no arm64 macOS release, ubi picks x86_64 + Rosetta
+# packer: macOS-only (UTM box building), install manually if needed: brew install packer
 
 [env]
 GOWORK = "off"
@@ -22,7 +25,7 @@ SUBSYSTEMS_RELEASE = "arc liftbridge nats sync-cf sync-gh sync-git telegraf"
 SUBSYSTEMS_CI = "nats"
 # Subsystem versions
 NATS_VERSION = "v2.10.24"
-ARC_VERSION = "main"
+ARC_VERSION = "v26.03.2"
 LB_VERSION = "master"
 TG_VERSION = "master"
 DOCS_VERSION = "v0.140.2"
@@ -41,6 +44,7 @@ includes = [
   "sync-gh/mise-tasks.toml",
   "sync-git/mise-tasks.toml",
   "telegraf/mise-tasks.toml",
+  "utm/mise-tasks.toml",
 ]
 
 # ── Root tasks ────────────────────────────────────────────────────────────────
@@ -88,6 +92,36 @@ run = "mise run ${usage_subsystem}:bin:build"
 
 [tasks."bin:verify"]
 description = "Verify all binary versions and checksums"
+run_windows = '''
+$ErrorActionPreference = "Stop"
+Write-Host "=== Binary Version Verification ==="
+$ERRORS = 0
+$EXE = ".exe"
+foreach ($subsystem in @("arc", "liftbridge", "telegraf")) {
+  $bin = "$subsystem/.bin/$subsystem$EXE"
+  if (-not (Test-Path $bin)) {
+    Write-Host "FAIL ${subsystem}: Binary not found at $bin"; $ERRORS++; continue
+  }
+  if (-not (Test-Path "$subsystem/.bin/.version")) {
+    Write-Host "FAIL ${subsystem}: No .version file"; $ERRORS++; continue
+  }
+  $recorded = (Get-Content "$subsystem/.bin/.version" | Where-Object { $_ -match '^checksum:' }) -replace '^checksum:\s*'
+  $actual = (Get-FileHash $bin -Algorithm SHA256).Hash.ToLower()
+  if ($recorded -ne $actual) {
+    Write-Host "FAIL ${subsystem}: Checksum mismatch!"; $ERRORS++; continue
+  }
+  Write-Host "OK ${subsystem}: checksum verified"
+}
+foreach ($tool in @("nats-server", "gh")) {
+  if (Get-Command $tool -ErrorAction SilentlyContinue) {
+    Write-Host "OK ${tool}: available on PATH (mise-managed)"
+  } else {
+    Write-Host "FAIL ${tool}: not found on PATH"; $ERRORS++
+  }
+}
+if ($ERRORS -gt 0) { Write-Host ""; Write-Host "FAIL $ERRORS issues found"; exit 1 }
+Write-Host ""; Write-Host "OK All binaries verified"
+'''
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -288,7 +322,8 @@ GOOS="$(go env GOOS)"
 GOARCH="$(go env GOARCH)"
 gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1 || \
   gh release create "$RELEASE_TAG" --repo "$RELEASE_REPO" --title "$SUBSYSTEM $VERSION" --notes "Binary release for $SUBSYSTEM $VERSION"
-gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPO" "$DIST_DIR"/${SUBSYSTEM}*-${GOOS}-${GOARCH}.tar.gz --clobber
+ARTIFACT=$(ls "$DIST_DIR"/${SUBSYSTEM}*-${GOOS}-${GOARCH}.tar.gz "$DIST_DIR"/${SUBSYSTEM}*-${GOOS}-${GOARCH}.zip 2>/dev/null | head -1)
+[ -n "$ARTIFACT" ] && gh release upload "$RELEASE_TAG" --repo "$RELEASE_REPO" "$ARTIFACT" --clobber
 """
 
 [tasks."release:all"]
@@ -362,6 +397,16 @@ echo "OK All CI binaries verified"
 
 [tasks."ci:start"]
 description = "Start CI subsystem services"
+run_windows = """
+$ErrorActionPreference = "Stop"
+Write-Host "Platform: Windows / windows"
+Write-Host "pitchfork: $((Get-Command pitchfork -ErrorAction SilentlyContinue).Source)"
+pitchfork --version
+foreach ($subsystem in ($env:SUBSYSTEMS_CI -split ' ')) {
+  Write-Host "Starting $subsystem..."
+  pitchfork start $subsystem
+}
+"""
 run = """
 #!/usr/bin/env bash
 set -euo pipefail

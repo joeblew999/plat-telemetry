@@ -57,6 +57,7 @@ telegraf/.bin/telegraf${EXE} --config telegraf/telegraf.conf
 
 ["telegraf:health"]
 description = "Check Telegraf health"
+run_windows = 'if (-not (Get-Process telegraf -ErrorAction SilentlyContinue)) { exit 1 }'
 run = 'pgrep -f "telegraf --config" > /dev/null'
 
 ["telegraf:dev:run"]
@@ -95,9 +96,13 @@ set -euo pipefail
 GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
-mkdir -p "$DIST"
 EXE=$(go env GOEXE)
-tar -czvf "$DIST/telegraf-${GOOS}-${GOARCH}.tar.gz" -C telegraf/.bin telegraf${EXE}
+mkdir -p "$DIST"
+if [ "$GOOS" = "windows" ]; then
+  ouch compress -y "telegraf/.bin/telegraf${EXE}" "$DIST/telegraf-${GOOS}-${GOARCH}.zip"
+else
+  ouch compress -y "telegraf/.bin/telegraf${EXE}" "$DIST/telegraf-${GOOS}-${GOARCH}.tar.gz"
+fi
 """
 
 ["telegraf:clean"]

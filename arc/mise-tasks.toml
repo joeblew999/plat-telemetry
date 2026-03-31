@@ -39,6 +39,10 @@ go build -o ../.bin/arc${EXE} ./cmd/arc
 description = "Ensure arc binary exists"
 run = """
 #!/usr/bin/env bash
+if command -v arc >/dev/null 2>&1; then
+  echo "OK arc: available on PATH (mise-managed)"
+  exit 0
+fi
 EXE=$(go env GOEXE)
 [ -f arc/.bin/arc${EXE} ] && exit 0
 mise run arc:bin:build
@@ -49,9 +53,13 @@ description = "Run arc binary"
 depends = ["arc:ensure"]
 run = """
 #!/usr/bin/env bash
-EXE=$(go env GOEXE)
 mkdir -p arc/.data
-arc/.bin/arc${EXE} --config arc/arc.toml
+if command -v arc >/dev/null 2>&1; then
+  arc --config arc/arc.toml
+else
+  EXE=$(go env GOEXE)
+  arc/.bin/arc${EXE} --config arc/arc.toml
+fi
 """
 
 ["arc:health"]
@@ -94,6 +102,7 @@ set -euo pipefail
 GOOS="${GOOS:-$(go env GOOS)}"
 GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
+if command -v cygpath >/dev/null 2>&1; then DIST="$(cygpath -u "$DIST")"; fi
 mkdir -p "$DIST"
 EXE=$(go env GOEXE)
 tar -czvf "$DIST/arc-${GOOS}-${GOARCH}.tar.gz" -C arc/.bin arc${EXE}

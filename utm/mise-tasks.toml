@@ -1,0 +1,352 @@
+# UTM - VM lifecycle via Vagrant + UTM on macOS ARM64
+# Goal: boot Windows 11 ARM64 VM and run `mise run ci` to validate cross-platform compatibility
+# All tasks skip gracefully on non-macOS (UTM is macOS-only)
+# Usage: VM=<name> mise run utm:<task>  (e.g. VM=alpine mise run utm:up)
+#
+# Platform handling:
+#   run         = bash script for macOS (and Linux, which also guards via uname check)
+#   run_windows = PowerShell no-op — mise handles the skip at the framework level,
+#                 so bash never needs to be on PATH for Windows to use these tasks
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+
+["utm:deps"]
+description = "Verify UTM + Vagrant are installed, install vagrant_utm plugin"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+if ! command -v utmctl >/dev/null 2>&1 && [ ! -d "/Applications/UTM.app" ]; then
+  echo "FAIL UTM not installed"
+  echo "  Install from: https://mac.getutm.app"
+  exit 1
+fi
+echo "OK UTM found"
+if ! command -v vagrant >/dev/null 2>&1; then
+  echo "FAIL Vagrant not installed"
+  echo "  Run in your terminal: brew install --cask vagrant"
+  echo "  Or download from: https://developer.hashicorp.com/vagrant/install"
+  exit 1
+fi
+echo "OK Vagrant: $(vagrant --version)"
+if vagrant plugin list 2>/dev/null | grep -q vagrant_utm; then
+  echo "OK vagrant_utm plugin already installed"
+else
+  echo "Installing vagrant_utm plugin..."
+  vagrant plugin install vagrant_utm
+fi
+echo "OK utm deps ready"
+"""
+
+["utm:ensure"]
+description = "Verify UTM prerequisites are met (quick check)"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+command -v vagrant >/dev/null 2>&1 || { echo "FAIL vagrant not found — run: mise run utm:deps"; exit 1; }
+vagrant plugin list 2>/dev/null | grep -q vagrant_utm || { echo "FAIL vagrant_utm plugin missing — run: mise run utm:deps"; exit 1; }
+echo "OK utm prerequisites met"
+"""
+
+# ── VM Lifecycle ──────────────────────────────────────────────────────────────
+
+["utm:up"]
+description = "Start a UTM VM (VM=ubuntu|debian|alpine|windows)"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${VM:-}" ]; then
+  echo "FAIL VM is required — e.g. VM=alpine mise run utm:up"
+  exit 1
+fi
+vagrant up "$VM"
+"""
+
+["utm:down"]
+description = "Stop a UTM VM (VM=name)"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${VM:-}" ]; then
+  echo "FAIL VM is required — e.g. VM=alpine mise run utm:down"
+  exit 1
+fi
+vagrant halt "$VM"
+"""
+
+["utm:ssh"]
+description = "SSH into a Linux UTM VM (VM=ubuntu|debian|alpine)"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${VM:-}" ]; then
+  echo "FAIL VM is required — e.g. VM=alpine mise run utm:ssh"
+  exit 1
+fi
+vagrant ssh "$VM"
+"""
+
+["utm:status"]
+description = "Show status of all UTM VMs"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+vagrant status
+"""
+
+["utm:destroy"]
+description = "Destroy a UTM VM (VM=name)"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${VM:-}" ]; then
+  echo "FAIL VM is required — e.g. VM=alpine mise run utm:destroy"
+  exit 1
+fi
+vagrant destroy -f "$VM"
+"""
+
+["utm:provision"]
+description = "Re-run provisioners on a UTM VM (VM=name)"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${VM:-}" ]; then
+  echo "FAIL VM is required — e.g. VM=windows mise run utm:provision"
+  exit 1
+fi
+vagrant provision "$VM"
+"""
+
+["utm:reload"]
+description = "Reload a UTM VM with updated Vagrantfile (VM=name)"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${VM:-}" ]; then
+  echo "FAIL VM is required — e.g. VM=alpine mise run utm:reload"
+  exit 1
+fi
+vagrant reload "$VM"
+"""
+
+# ── Box Management ────────────────────────────────────────────────────────────
+
+["utm:box:download"]
+description = "Pre-download all Vagrant boxes for UTM (ubuntu, debian, alpine, windows)"
+depends = ["utm:ensure"]
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+for box in utm/ubuntu-24.04 utm/bookworm utm/alpine-ce utm/windows-11; do
+  if vagrant box list 2>/dev/null | grep -q "^${box} "; then
+    echo "OK $box already downloaded"
+  else
+    echo "Downloading $box..."
+    vagrant box add "$box" --provider utm
+  fi
+done
+echo "OK all boxes ready"
+"""
+
+["utm:box:list"]
+description = "List downloaded Vagrant boxes"
+depends = ["utm:ensure"]
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+vagrant box list
+"""
+
+["utm:box:clean"]
+description = "Remove all downloaded Vagrant boxes"
+depends = ["utm:ensure"]
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+for box in utm/ubuntu-24.04 utm/bookworm utm/alpine-ce utm/windows-11; do
+  vagrant box remove "$box" --provider utm --force 2>/dev/null || true
+done
+echo "OK boxes removed"
+"""
+
+# ── Windows (WinRM-specific) ──────────────────────────────────────────────────
+
+["utm:windows:ci"]
+description = "Run 'mise run ci' inside the Windows VM"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+vagrant status windows 2>/dev/null | grep -q "running" || vagrant up windows
+echo "Running 'mise run ci' inside Windows VM..."
+# Uses windows-ci.ps1 via the 'ci' provisioner (non-privileged, sets PATH for bash)
+vagrant provision windows --provision-with ci
+echo "OK Windows CI passed"
+"""
+
+["utm:windows:shell"]
+description = "Open an interactive WinRM PowerShell session in the Windows VM"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+vagrant winrm -s powershell windows
+"""
+
+# ── Clean ─────────────────────────────────────────────────────────────────────
+
+["utm:clean"]
+description = "Destroy all UTM VMs"
+depends = ["utm:ensure"]
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+vagrant destroy -f
+"""
+
+["utm:clean:all"]
+description = "Destroy all VMs and remove all boxes"
+depends = ["utm:clean", "utm:box:clean"]
+run = ""
+
+# ── Packer (custom box build) ─────────────────────────────────────────────────
+
+["utm:packer:init"]
+description = "Install Packer plugins for UTM (utm-iso source + utm-vagrant post-processor)"
+run_windows = 'Write-Host "SKIP utm:packer: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm:packer: UTM is macOS-only"
+  exit 0
+fi
+packer init utm/windows.pkr.hcl
+echo "OK packer plugins installed"
+"""
+
+["utm:packer:validate"]
+description = "Validate windows.pkr.hcl (requires ISO_URL env var)"
+run_windows = 'Write-Host "SKIP utm:packer: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm:packer: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${ISO_URL:-}" ]; then
+  echo "FAIL ISO_URL is required — e.g. ISO_URL=/path/to/windows.iso mise run utm:packer:validate"
+  exit 1
+fi
+packer validate -var "iso_url=${ISO_URL}" utm/windows.pkr.hcl
+echo "OK windows.pkr.hcl is valid"
+"""
+
+["utm:packer:build"]
+description = "Build custom Windows 11 ARM64 Vagrant box via Packer (requires ISO_URL env var)"
+run_windows = 'Write-Host "SKIP utm:packer: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm:packer: UTM is macOS-only"
+  exit 0
+fi
+if [ -z "${ISO_URL:-}" ]; then
+  echo "FAIL ISO_URL is required — e.g. ISO_URL=/path/to/windows.iso mise run utm:packer:build"
+  echo "  Download ISO from: https://www.microsoft.com/software-download/windowsinsiderpreviewiso"
+  exit 1
+fi
+echo "Building Windows 11 ARM64 box from ISO: ${ISO_URL}"
+packer build -var "iso_url=${ISO_URL}" utm/windows.pkr.hcl
+echo "OK Box built: utm/windows-11-arm64.box"
+echo "  Add to Vagrant: vagrant box add utm/windows-11 utm/windows-11-arm64.box --provider utm"
+"""

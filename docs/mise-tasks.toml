@@ -37,31 +37,52 @@ go build -tags extended -o ../.bin/hugo${EXE} .
 
 ["docs:bin:download"]
 description = "Download pre-built Hugo binary"
-depends = ["sync-git:ensure"]
+depends = ["sync-git:ensure", "gh:ensure"]
+run_windows = """
+$ErrorActionPreference = "Stop"
+$EXE = ".exe"
+if (Test-Path "docs/.bin/hugo$EXE") { exit 0 }
+$GOOS = (& go env GOOS).Trim()
+$GOARCH = (& go env GOARCH).Trim()
+$VERSION_NUM = $env:DOCS_VERSION -replace '^v', ''
+New-Item -ItemType Directory -Force -Path "docs/.bin" | Out-Null
+if ($GOOS -eq "windows") {
+  $ARCHIVE = if ($GOARCH -eq "arm64") { "hugo_${VERSION_NUM}_windows-arm64.zip" } else { "hugo_extended_${VERSION_NUM}_windows-amd64.zip" }
+} elseif ($GOOS -eq "darwin") {
+  $ARCHIVE = "hugo_extended_${VERSION_NUM}_darwin-universal.tar.gz"
+} else {
+  $ARCHIVE = "hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.tar.gz"
+}
+gh release download $env:DOCS_VERSION --repo gohugoio/hugo --pattern $ARCHIVE --dir docs/.bin
+ouch decompress -y "docs/.bin/$ARCHIVE" --dir docs/.bin
+Remove-Item "docs/.bin/$ARCHIVE" -Force
+& "sync-git/.bin/sync-git$EXE" version-file "docs/.bin/hugo$EXE" --version=$env:DOCS_VERSION
+"""
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
 EXE=$(go env GOEXE)
-[ -f docs/.bin/hugo${EXE} ] && exit 0
+[ -f "docs/.bin/hugo${EXE}" ] && exit 0
 GOOS="$(go env GOOS)"
 GOARCH="$(go env GOARCH)"
 VERSION_NUM="${DOCS_VERSION#v}"
 mkdir -p docs/.bin
 if [ "$GOOS" = "windows" ]; then
-  ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.zip"
-  TMPFILE=$(mktemp)
-  curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" -o "$TMPFILE"
-  unzip -o "$TMPFILE" hugo.exe -d docs/.bin
-  rm -f "$TMPFILE"
-else
-  if [ "$GOOS" = "darwin" ]; then
-    ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-universal.tar.gz"
+  if [ "$GOARCH" = "arm64" ]; then
+    ARCHIVE="hugo_${VERSION_NUM}_windows-arm64.zip"
   else
-    ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.tar.gz"
+    ARCHIVE="hugo_extended_${VERSION_NUM}_windows-amd64.zip"
   fi
-  curl -L "https://github.com/gohugoio/hugo/releases/download/${DOCS_VERSION}/$ARCHIVE" | tar xz -C docs/.bin hugo
+elif [ "$GOOS" = "darwin" ]; then
+  ARCHIVE="hugo_extended_${VERSION_NUM}_darwin-universal.tar.gz"
+else
+  ARCHIVE="hugo_extended_${VERSION_NUM}_${GOOS}-${GOARCH}.tar.gz"
 fi
-sync-git/.bin/sync-git${EXE} version-file docs/.bin/hugo${EXE} --version="${DOCS_VERSION}"
+# gh release download works cross-platform (no curl/tar C: path issues on Windows)
+gh release download "${DOCS_VERSION}" --repo gohugoio/hugo --pattern "$ARCHIVE" --dir docs/.bin
+ouch decompress -y "docs/.bin/$ARCHIVE" --dir docs/.bin
+rm -f "docs/.bin/$ARCHIVE"
+sync-git/.bin/sync-git${EXE} version-file "docs/.bin/hugo${EXE}" --version="${DOCS_VERSION}"
 """
 
 ["docs:ensure"]
@@ -84,6 +105,7 @@ docs/.bin/hugo${EXE} server -D --bind 0.0.0.0 --port 1313 -s docs
 
 ["docs:health"]
 description = "Check Hugo server health"
+run_windows = 'try { Invoke-WebRequest -Uri "http://localhost:1313/plat-telemetry/" -UseBasicParsing | Out-Null } catch { exit 1 }'
 run = "curl -sf http://localhost:1313/plat-telemetry/ > /dev/null"
 
 ["docs:build"]
