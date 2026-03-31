@@ -109,9 +109,28 @@ echo "OK utm prerequisites met"
 
 # ── VM Lifecycle ──────────────────────────────────────────────────────────────
 
+["utm:state:restore"]
+description = "Restore vagrant local state from UTM if missing (VM=name required)"
+dir = "utm"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then exit 0; fi
+if [ -z "${VM:-}" ]; then echo "FAIL VM is required"; exit 1; fi
+UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
+if [ -z "$UUID" ]; then
+  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
+  if [ -n "$UUID" ]; then
+    mkdir -p ".vagrant/machines/${VM}/utm"
+    echo -n "$UUID" > ".vagrant/machines/${VM}/utm/id"
+    echo "OK restored vagrant state uuid=$UUID"
+  fi
+fi
+"""
+
 ["utm:up"]
 description = "Start a UTM VM (VM=ubuntu|debian|alpine|windows)"
-depends = ["utm:ensure"]
+depends = ["utm:ensure", "utm:state:restore"]
 dir = "utm"
 run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
 run = """
@@ -125,20 +144,7 @@ if [ -z "${VM:-}" ]; then
   echo "FAIL VM is required — e.g. VM=alpine mise run utm:up"
   exit 1
 fi
-
-# Check vagrant state first
 UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
-
-if [ -z "$UUID" ]; then
-  # No vagrant state — check if UTM already has a VM with matching name
-  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
-  if [ -n "$UUID" ]; then
-    echo "OK found existing UTM VM uuid=$UUID — restoring vagrant state"
-    mkdir -p ".vagrant/machines/${VM}/utm"
-    echo -n "$UUID" > ".vagrant/machines/${VM}/utm/id"
-  fi
-fi
-
 if [ -n "$UUID" ]; then
   STATUS=$(utmctl status "$UUID" 2>/dev/null || true)
   echo "OK vagrant UUID=$UUID status=$STATUS"
@@ -168,7 +174,7 @@ vagrant up "$VM"
 
 ["utm:down"]
 description = "Stop a UTM VM (VM=name)"
-depends = ["utm:ensure"]
+depends = ["utm:ensure", "utm:state:restore"]
 dir = "utm"
 run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
 run = """
@@ -183,9 +189,6 @@ if [ -z "${VM:-}" ]; then
   exit 1
 fi
 UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
-if [ -z "$UUID" ]; then
-  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
-fi
 if [ -n "$UUID" ]; then
   utmctl stop "$UUID" 2>/dev/null || true
   echo "OK VM stopped uuid=$UUID"
@@ -229,7 +232,7 @@ vagrant status
 
 ["utm:destroy"]
 description = "Destroy a UTM VM (VM=name)"
-depends = ["utm:ensure"]
+depends = ["utm:ensure", "utm:state:restore"]
 dir = "utm"
 run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
 run = """
@@ -244,9 +247,6 @@ if [ -z "${VM:-}" ]; then
   exit 1
 fi
 UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
-if [ -z "$UUID" ]; then
-  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
-fi
 if [ -n "$UUID" ]; then
   vagrant destroy -f "$VM" 2>/dev/null || true
   utmctl stop "$UUID" 2>/dev/null || true
@@ -260,7 +260,7 @@ fi
 
 ["utm:provision"]
 description = "Re-run provisioners on a UTM VM (VM=name)"
-depends = ["utm:ensure"]
+depends = ["utm:ensure", "utm:state:restore"]
 dir = "utm"
 run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
 run = """
@@ -274,21 +274,12 @@ if [ -z "${VM:-}" ]; then
   echo "FAIL VM is required — e.g. VM=windows mise run utm:provision"
   exit 1
 fi
-UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
-if [ -z "$UUID" ]; then
-  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
-  if [ -n "$UUID" ]; then
-    mkdir -p ".vagrant/machines/${VM}/utm"
-    echo -n "$UUID" > ".vagrant/machines/${VM}/utm/id"
-    echo "OK restored vagrant state uuid=$UUID"
-  fi
-fi
 vagrant provision "$VM"
 """
 
 ["utm:reload"]
 description = "Reload a UTM VM with updated Vagrantfile (VM=name)"
-depends = ["utm:ensure"]
+depends = ["utm:ensure", "utm:state:restore"]
 dir = "utm"
 run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
 run = """
@@ -301,15 +292,6 @@ fi
 if [ -z "${VM:-}" ]; then
   echo "FAIL VM is required — e.g. VM=alpine mise run utm:reload"
   exit 1
-fi
-UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
-if [ -z "$UUID" ]; then
-  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
-  if [ -n "$UUID" ]; then
-    mkdir -p ".vagrant/machines/${VM}/utm"
-    echo -n "$UUID" > ".vagrant/machines/${VM}/utm/id"
-    echo "OK restored vagrant state uuid=$UUID"
-  fi
 fi
 vagrant reload "$VM"
 """
