@@ -47,6 +47,8 @@ Kafka-style message streaming in Go. Built on NATS.
 
 https://github.com/basekick-labs/arc
 
+Use https://github.com/duckdb/duckdb-go-bindings
+
 
 High-performance time-series database for Industrial IoT and Analytics. 9.47M records/sec. Racing telemetry, smart cities, mining sensors, medical devices. DuckDB SQL + Parquet + Arrow. AGPL-3.0
 

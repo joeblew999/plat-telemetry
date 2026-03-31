@@ -11,7 +11,7 @@
 # ── Dependencies ──────────────────────────────────────────────────────────────
 
 ["utm:deps"]
-description = "Verify UTM + Vagrant are installed, install vagrant_utm plugin"
+description = "Install UTM, Vagrant, and vagrant_utm plugin"
 run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
 run = """
 #!/usr/bin/env bash
@@ -20,26 +20,75 @@ if [ "$(uname)" != "Darwin" ]; then
   echo "SKIP utm: UTM is macOS-only"
   exit 0
 fi
-if ! command -v utmctl >/dev/null 2>&1 && [ ! -d "/Applications/UTM.app" ]; then
-  echo "FAIL UTM not installed"
-  echo "  Install from: https://mac.getutm.app"
-  exit 1
+if [ -d "/Applications/UTM.app" ] || command -v utmctl >/dev/null 2>&1; then
+  echo "OK UTM already installed"
+else
+  echo "Installing UTM..."
+  brew install --cask utm
+  echo "OK UTM installed"
 fi
-echo "OK UTM found"
-if ! command -v vagrant >/dev/null 2>&1; then
-  echo "FAIL Vagrant not installed"
-  echo "  Run in your terminal: brew install --cask vagrant"
-  echo "  Or download from: https://developer.hashicorp.com/vagrant/install"
-  exit 1
+if command -v vagrant >/dev/null 2>&1; then
+  echo "OK Vagrant already installed: $(vagrant --version)"
+else
+  echo "Installing Vagrant..."
+  # Vagrant installs via pkg inside dmg — requires admin (prompts via macOS dialog)
+  brew fetch --cask vagrant 2>/dev/null || true
+  DMG=$(find ~/Library/Caches/Homebrew/Cask -name "vagrant_*.dmg" 2>/dev/null | head -1)
+  if [ -z "$DMG" ]; then
+    echo "FAIL could not find vagrant dmg in brew cache"
+    exit 1
+  fi
+  hdiutil attach "$DMG" -nobrowse -quiet
+  osascript -e 'do shell script "installer -pkg /Volumes/Vagrant/vagrant.pkg -target /" with administrator privileges'
+  hdiutil detach /Volumes/Vagrant -quiet 2>/dev/null || true
+  echo "OK Vagrant installed: $(vagrant --version)"
 fi
-echo "OK Vagrant: $(vagrant --version)"
 if vagrant plugin list 2>/dev/null | grep -q vagrant_utm; then
   echo "OK vagrant_utm plugin already installed"
 else
   echo "Installing vagrant_utm plugin..."
   vagrant plugin install vagrant_utm
+  echo "OK vagrant_utm plugin installed"
 fi
 echo "OK utm deps ready"
+"""
+
+["utm:deps:delete"]
+description = "Uninstall vagrant_utm plugin, Vagrant, and UTM app"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+pkill -x UTM 2>/dev/null || true
+pkill -x Vagrant 2>/dev/null || true
+
+# 1. Remove plugin first (requires vagrant still installed)
+if command -v vagrant >/dev/null 2>&1 && vagrant plugin list 2>/dev/null | grep -q vagrant_utm; then
+  vagrant plugin uninstall vagrant_utm && echo "OK vagrant_utm plugin removed" || echo "WARN vagrant_utm plugin remove failed"
+else
+  echo "OK vagrant_utm plugin not installed"
+fi
+
+# 2. Remove Vagrant (pkg install requires admin — prompts via macOS dialog)
+if [ -d "/opt/vagrant" ] || command -v vagrant >/dev/null 2>&1; then
+  osascript -e 'do shell script "rm -rf /opt/vagrant && rm -f /usr/local/bin/vagrant && pkgutil --forget com.vagrant.vagrant" with administrator privileges'
+  brew uninstall --cask vagrant 2>/dev/null || true
+  echo "OK Vagrant removed"
+else
+  echo "OK Vagrant not installed"
+fi
+
+# 3. Remove UTM
+if [ -d "/Applications/UTM.app" ] || command -v utmctl >/dev/null 2>&1; then
+  brew uninstall --cask utm && echo "OK UTM removed" || echo "WARN UTM remove failed"
+else
+  echo "OK UTM not installed"
+fi
+
+echo "OK utm deps delete done"
 """
 
 ["utm:ensure"]
@@ -297,6 +346,135 @@ fi
 vagrant winrm -s powershell windows
 """
 
+# ── Diagnostics ───────────────────────────────────────────────────────────────
+
+["utm:diag:utmctl"]
+description = "List all VMs known to utmctl (the running UTM process)"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+echo "=== utmctl list (what UTM process sees) ==="
+utmctl list 2>/dev/null || echo "  (utmctl failed — is UTM running?)"
+"""
+
+["utm:diag:registry"]
+description = "List all entries in UTM registry via defaults read (UUID → name, path, exists)"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+PREFS=~/Library/Containers/com.utmapp.UTM/Data/Library/Preferences/com.utmapp.UTM.plist
+echo "=== UTM registry (via defaults read — always current) ==="
+# defaults read goes through cfprefsd — no binary data, always reflects live state
+UUIDS=$(defaults read com.utmapp.UTM Registry 2>/dev/null \
+  | grep -oE '"[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}" =' \
+  | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' || true)
+if [ -z "$UUIDS" ]; then
+  echo "  (registry is empty)"
+  exit 0
+fi
+# For each UUID, read specific string keys from plist (no binary data at leaf level)
+for uuid in $UUIDS; do
+  BUNDLE=$(/usr/libexec/PlistBuddy -c "Print Registry:${uuid}:Package:Path" "$PREFS" 2>/dev/null || echo "(no path)")
+  NAME=$(/usr/libexec/PlistBuddy -c "Print Registry:${uuid}:Name" "$PREFS" 2>/dev/null || echo "(no name)")
+  if [ -e "$BUNDLE" ]; then EXISTS="EXISTS"; else EXISTS="MISSING"; fi
+  echo "  $uuid  $EXISTS  name=$NAME  $BUNDLE"
+done
+"""
+
+["utm:diag:bundles"]
+description = "List all .utm bundles in UTM Documents folder"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+BASE=~/Library/Containers/com.utmapp.UTM/Data/Documents
+echo "=== .utm bundles on disk ($BASE) ==="
+if [ ! -d "$BASE" ]; then
+  echo "  (directory not found)"
+  exit 0
+fi
+COUNT=0
+for bundle in "$BASE"/*.utm; do
+  [ -e "$bundle" ] || { echo "  (none found)"; break; }
+  NAME=$(basename "$bundle")
+  # Try to read UUID from config.plist inside bundle
+  UUID=$(/usr/libexec/PlistBuddy -c "Print Information:UUID" "$bundle/config.plist" 2>/dev/null || echo "(no uuid)")
+  echo "  $NAME  uuid=$UUID"
+  COUNT=$((COUNT+1))
+done
+echo "  total: $COUNT bundle(s)"
+"""
+
+["utm:diag:vagrant"]
+description = "List vagrant machine state in .vagrant/machines/"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+VAGRANT_DIR="$(pwd)/utm"
+echo "=== Vagrant local machine state ($VAGRANT_DIR/.vagrant/machines/) ==="
+if [ ! -d "$VAGRANT_DIR/.vagrant/machines" ]; then
+  echo "  (no .vagrant/machines found)"
+  exit 0
+fi
+for machine_dir in "$VAGRANT_DIR/.vagrant/machines"/*/utm; do
+  [ -d "$machine_dir" ] || continue
+  VM_NAME=$(basename "$(dirname "$machine_dir")")
+  ID_FILE="$machine_dir/id"
+  if [ -f "$ID_FILE" ]; then
+    UUID=$(cat "$ID_FILE")
+    echo "  $VM_NAME  vagrant-uuid=$UUID"
+  else
+    echo "  $VM_NAME  (no id file)"
+  fi
+done
+"""
+
+["utm:diag:vagrant:global"]
+description = "List vagrant global machine index (~/.vagrant.d/data/machine-index/index)"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+INDEX=~/.vagrant.d/data/machine-index/index
+echo "=== Vagrant global machine index ($INDEX) ==="
+if [ ! -f "$INDEX" ]; then
+  echo "  (index not found)"
+  exit 0
+fi
+# Use PlistBuddy? No — vagrant index is JSON. Use /usr/bin/python3 if available? No.
+# Read it with bash + grep — extract machine IDs and their vagrantfile_path
+grep -o '"[0-9a-f]*":{[^}]*}' "$INDEX" 2>/dev/null | while IFS= read -r entry; do
+  ID=$(echo "$entry" | grep -o '^"[^"]*"' | tr -d '"')
+  NAME=$(echo "$entry" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+  VF_PATH=$(echo "$entry" | grep -o '"vagrantfile_path":"[^"]*"' | cut -d'"' -f4)
+  STATE=$(echo "$entry" | grep -o '"state":"[^"]*"' | cut -d'"' -f4)
+  echo "  id=$ID  name=$NAME  state=$STATE  path=$VF_PATH"
+done || echo "  (could not parse index)"
+"""
+
+["utm:diag"]
+description = "Run all UTM diagnostics (utmctl + registry + bundles + vagrant state)"
+depends = ["utm:diag:utmctl", "utm:diag:registry", "utm:diag:bundles", "utm:diag:vagrant", "utm:diag:vagrant:global"]
+run = ""
+
 # ── Clean ─────────────────────────────────────────────────────────────────────
 
 ["utm:clean"]
@@ -334,12 +512,16 @@ sleep 5
 while pgrep -x UTM >/dev/null 2>&1; do sleep 1; done
 BASE=~/Library/Containers/com.utmapp.UTM/Data/Documents
 PREFS=~/Library/Containers/com.utmapp.UTM/Data/Library/Preferences/com.utmapp.UTM.plist
-VAGRANT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VAGRANT_DIR="$(pwd)/utm"
 
 echo "=== Reconciling UTM registry (removing entries with missing bundles) ==="
 if [ -f "$PREFS" ]; then
-  UUIDS=$(/usr/libexec/PlistBuddy -c "Print Registry" "$PREFS" 2>/dev/null | grep -aoE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | sort -u)
+  # Use defaults read (goes through cfprefsd, no binary data) to get registry UUIDs
+  UUIDS=$(defaults read com.utmapp.UTM Registry 2>/dev/null \
+    | grep -oE '"[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}" =' \
+    | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' || true)
   for uuid in $UUIDS; do
+    # PlistBuddy on leaf string keys is safe — no binary data at this level
     BUNDLE=$(/usr/libexec/PlistBuddy -c "Print Registry:${uuid}:Package:Path" "$PREFS" 2>/dev/null || true)
     if [ -z "$BUNDLE" ]; then continue; fi
     if [ ! -e "$BUNDLE" ]; then
@@ -357,14 +539,8 @@ rm -rf "$VAGRANT_DIR/.vagrant/machines"
 echo "=== Clearing vagrant global machine index ==="
 INDEX=~/.vagrant.d/data/machine-index/index
 if [ -f "$INDEX" ]; then
-  python3 -c "
-import json
-with open('$INDEX') as f: data = json.load(f)
-to_remove = [k for k,v in data.get('machines',{}).items() if 'plat-telemetry' in v.get('vagrantfile_path','')]
-for k in to_remove: del data['machines'][k]
-with open('$INDEX','w') as f: json.dump(data, f, indent=2)
-import sys; print(f'removed {len(to_remove)} entries', file=sys.stderr)
-"
+  echo '{"version":1,"machines":{}}' > "$INDEX"
+  echo "  reset vagrant global index"
 fi
 
 open -a UTM
