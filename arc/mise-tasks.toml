@@ -37,6 +37,7 @@ go build -o ../.bin/arc${EXE} ./cmd/arc
 
 ["arc:ensure"]
 description = "Ensure arc binary exists"
+run_windows = 'echo SKIP arc: requires DuckDB CGO bindings (not available on Windows ARM64)'
 run = """
 #!/usr/bin/env bash
 if command -v arc >/dev/null 2>&1; then
