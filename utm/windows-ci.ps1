@@ -42,12 +42,14 @@ Write-Host ""
 & $mise install 2>$null
 
 # Run CI - use doppler to inject secrets if DOPPLER_TOKEN is available
+# 2>$null suppresses mise's task-tracing lines ([ci] $ ...) that go to stderr;
+# actual build output (stdout) is preserved. Exit code is still checked below.
 if ($env:DOPPLER_TOKEN) {
     Write-Host "Running 'mise run ci' via doppler (secrets injected)..."
-    & doppler run -- $mise run ci
+    & doppler run -- $mise run ci 2>$null
 } else {
     Write-Host "WARN DOPPLER_TOKEN not set - running without secrets (ci:release will be skipped)"
-    & $mise run ci
+    & $mise run ci 2>$null
 }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 exit 0
