@@ -74,41 +74,27 @@ if [ -z "${VM:-}" ]; then
   echo "FAIL VM is required — e.g. VM=alpine mise run utm:up"
   exit 1
 fi
-# Import, configure ports/memory/cpu (may fail on start — that is OK for windows)
-vagrant up "$VM" || true
 
-# Windows: patch config.plist before starting — the box ships with virtio-ramfb-gl
-# which crashes UTM on macOS 26+, and vagrant adds VirtFS args we don't need.
-if [ "$VM" = "windows" ]; then
-  UUID=$(cat .vagrant/machines/windows/utm/id 2>/dev/null || true)
-  if [ -z "$UUID" ]; then
-    echo "FAIL could not read windows VM UUID from vagrant state"
-    exit 1
+# Check vagrant state first — this is the source of truth for our VM's UUID
+UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
+
+if [ -n "$UUID" ]; then
+  # We have a UUID — check what UTM thinks about it
+  STATUS=$(utmctl status "$UUID" 2>/dev/null || true)
+  echo "OK vagrant UUID=$UUID status=$STATUS"
+  if [ "$STATUS" = "started" ]; then
+    echo "OK VM already running"
+    exit 0
   fi
-  CONFIG=~/Library/Containers/com.utmapp.UTM/Data/Documents/plat-windows.utm/config.plist
-  if [ ! -f "$CONFIG" ]; then
-    echo "FAIL config.plist not found at $CONFIG"
-    exit 1
+  if [ "$STATUS" = "stopped" ]; then
+    echo "Starting existing VM..."
+    utmctl start "$UUID"
+    exit 0
   fi
-  # Find the bundle path from UTM's registry (vagrant creates packer-vm-XXXXX.utm, not plat-windows.utm)
-  PREFS=~/Library/Containers/com.utmapp.UTM/Data/Library/Preferences/com.utmapp.UTM.plist
-  CONFIG=$(plutil -p "$PREFS" 2>/dev/null | grep -A3 "$UUID" | grep '"Path"' | sed 's/.*=> "\\(.*\\)"/\\1/' | head -1)/config.plist
-  if [ ! -f "$CONFIG" ]; then
-    echo "FAIL could not find config.plist for UUID $UUID"
-    exit 1
-  fi
-  echo "Patching Windows VM config at $CONFIG ..."
-  pkill -x UTM 2>/dev/null || true
-  sleep 3
-  plutil -replace Display.0.Hardware -string "virtio-ramfb" "$CONFIG"
-  plutil -remove QEMU.AdditionalArguments "$CONFIG" 2>/dev/null || true
-  echo "OK config patched"
-  open -a UTM
-  sleep 6
-  utmctl start "$UUID"
-  sleep 5
-  utmctl status "$UUID"
 fi
+
+# No vagrant state — create from scratch
+vagrant up "$VM"
 """
 
 ["utm:down"]
@@ -343,22 +329,25 @@ if [ "$(uname)" != "Darwin" ]; then
   exit 0
 fi
 pkill -x UTM 2>/dev/null || true
-sleep 2
+sleep 5
+# Wait until UTM is fully gone before touching registry
+while pgrep -x UTM >/dev/null 2>&1; do sleep 1; done
 BASE=~/Library/Containers/com.utmapp.UTM/Data/Documents
 PREFS=~/Library/Containers/com.utmapp.UTM/Data/Library/Preferences/com.utmapp.UTM.plist
 VAGRANT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "=== Removing all plat-* and packer-vm-* VM bundles ==="
-for bundle in "$BASE"/plat-windows.utm "$BASE"/plat-ubuntu.utm "$BASE"/plat-debian.utm "$BASE"/plat-alpine.utm "$BASE"/packer-vm-*.utm; do
-  [ -e "$bundle" ] || continue
-  echo "  removing $bundle"
-  rm -rf "$bundle"
-done
-
-echo "=== Clearing UTM registry entries ==="
+echo "=== Reconciling UTM registry (removing entries with missing bundles) ==="
 if [ -f "$PREFS" ]; then
-  for uuid in $(plutil -p "$PREFS" 2>/dev/null | grep '"UUID"' | sed 's/.*=> "\\(.*\\)"/\\1/' 2>/dev/null || true); do
-    plutil -remove "Registry.$uuid" "$PREFS" 2>/dev/null && echo "  removed $uuid" || true
+  UUIDS=$(/usr/libexec/PlistBuddy -c "Print Registry" "$PREFS" 2>/dev/null | grep -aoE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | sort -u)
+  for uuid in $UUIDS; do
+    BUNDLE=$(/usr/libexec/PlistBuddy -c "Print Registry:${uuid}:Package:Path" "$PREFS" 2>/dev/null || true)
+    if [ -z "$BUNDLE" ]; then continue; fi
+    if [ ! -e "$BUNDLE" ]; then
+      /usr/libexec/PlistBuddy -c "Delete Registry:${uuid}" "$PREFS"
+      echo "  removed stale: $uuid ($(basename "$BUNDLE"))"
+    else
+      echo "  kept valid:    $uuid ($(basename "$BUNDLE"))"
+    fi
   done
 fi
 
