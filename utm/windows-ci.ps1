@@ -36,4 +36,12 @@ Write-Host ""
 & $mise trust
 # Re-run install to pick up any new tools added to .mise.toml (e.g. ouch)
 & $mise install
-& $mise run ci
+
+# Run CI — use doppler to inject secrets if DOPPLER_TOKEN is available
+if ($env:DOPPLER_TOKEN) {
+    Write-Host "Running 'mise run ci' via doppler (secrets injected)..."
+    & doppler run -- $mise run ci
+} else {
+    Write-Host "WARN DOPPLER_TOKEN not set — running without secrets (ci:release will be skipped)"
+    & $mise run ci
+}

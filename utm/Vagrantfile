@@ -75,9 +75,11 @@ Vagrant.configure("2") do |config|
 
     # Run CI — trigger with: mise run utm:windows:ci
     # Must NOT be privileged — mise.exe fails when run as SYSTEM (elevated)
+    # Pass DOPPLER_TOKEN from host env so doppler can inject secrets in the VM
     vm.vm.provision "ci", type: "shell", run: "never",
       privileged: false,
-      path: "windows-ci.ps1"
+      path: "windows-ci.ps1",
+      env: { "DOPPLER_TOKEN" => ENV.fetch("DOPPLER_TOKEN", "") }
   end
 
   # =============================================================================

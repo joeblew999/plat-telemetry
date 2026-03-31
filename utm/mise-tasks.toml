@@ -256,6 +256,8 @@ fi
 vagrant status windows 2>/dev/null | grep -q "running" || vagrant up windows
 echo "Running 'mise run ci' inside Windows VM..."
 # Uses windows-ci.ps1 via the 'ci' provisioner (non-privileged, sets PATH for bash)
+# Vagrantfile reads DOPPLER_TOKEN from host env and passes it to the VM
+# Set DOPPLER_TOKEN in .env or run: DOPPLER_TOKEN=$(doppler configs tokens create ci --plain) mise run utm:windows:ci
 vagrant provision windows --provision-with ci
 echo "OK Windows CI passed"
 """

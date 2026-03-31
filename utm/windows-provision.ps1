@@ -149,8 +149,37 @@ $env:PATH = "C:\ProgramData\mise\bin;C:\Program Files\Git\bin;$env:PATH"
 & "C:\ProgramData\mise\bin\mise.exe" trust
 & "C:\ProgramData\mise\bin\mise.exe" install
 
+# ── 5. Install Doppler CLI ────────────────────────────────────────────────────
+
+if (Get-Command doppler -ErrorAction SilentlyContinue) {
+    Write-Host "OK doppler already installed: $(doppler --version)"
+} else {
+    Write-Host "Installing Doppler CLI from GitHub releases..."
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    $wc = New-Object System.Net.WebClient
+    $wc.Headers.Add("User-Agent", "PowerShell")
+    $json    = $wc.DownloadString("https://api.github.com/repos/DopplerHQ/cli/releases/latest")
+    $release = $json | ConvertFrom-Json
+    $asset   = $release.assets | Where-Object { $_.name -like "*windows_arm64.zip" } | Select-Object -First 1
+    if (-not $asset) {
+        $asset = $release.assets | Where-Object { $_.name -like "*windows_amd64.zip" } | Select-Object -First 1
+    }
+    $zipPath    = "$env:TEMP\doppler.zip"
+    $extractDir = "$env:TEMP\doppler-extract"
+    $wc.DownloadFile($asset.browser_download_url, $zipPath)
+    Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+    Remove-Item $zipPath
+    $dopplerExe = Get-ChildItem -Path $extractDir -Recurse -Filter "doppler.exe" | Select-Object -First 1
+    if (-not $dopplerExe) { throw "doppler.exe not found in zip" }
+    Copy-Item $dopplerExe.FullName "C:\ProgramData\mise\bin\doppler.exe" -Force
+    Remove-Item $extractDir -Recurse -Force
+    Write-Host "OK doppler installed: $(& 'C:\ProgramData\mise\bin\doppler.exe' --version)"
+}
+
 Write-Host ""
 Write-Host "=== Provisioning complete ==="
 Write-Host ""
-Write-Host "To run CI tests: mise run utm:windows:ci"
+Write-Host "To run CI tests: DOPPLER_TOKEN=<token> mise run utm:windows:ci"
 Write-Host "Or from inside VM: cd C:\plat-telemetry && mise run ci"
