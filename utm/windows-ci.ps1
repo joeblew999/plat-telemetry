@@ -28,6 +28,15 @@ Set-Location $repoDir
 # Pull latest code so .mise.toml changes (new tools etc.) are reflected
 # --quiet suppresses remote fetch info that git writes to stderr
 Write-Host "Pulling latest repo changes..."
+# Recover from corrupted git index (e.g. after unexpected VM reboot)
+if (Test-Path ".git\index") {
+    $indexOk = & git status 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARN git index corrupt, recovering..."
+        Remove-Item ".git\index" -Force
+        & git reset HEAD 2>$null
+    }
+}
 git reset --hard HEAD
 git pull --quiet
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL git pull failed"; exit 1 }
