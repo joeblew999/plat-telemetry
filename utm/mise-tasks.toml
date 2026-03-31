@@ -1,12 +1,41 @@
 # UTM - VM lifecycle via Vagrant + UTM on macOS ARM64
-# Goal: boot Windows 11 ARM64 VM and run `mise run ci` to validate cross-platform compatibility
+# Goal: boot VMs and run `mise run ci` to validate cross-platform compatibility
 # All tasks skip gracefully on non-macOS (UTM is macOS-only)
 # Usage: VM=<name> mise run utm:<task>  (e.g. VM=alpine mise run utm:up)
 #
-# Platform handling:
+# ── Architecture ──────────────────────────────────────────────────────────────
+#
+# There are 5 sources of truth that must stay consistent:
+#   1. utmctl list          — what the running UTM process knows (UUID, status, name)
+#   2. UTM plist registry   — persistent registry in com.utmapp.UTM preferences
+#   3. .utm bundles on disk — the actual VM bundle files in ~/Library/.../Documents/
+#   4. vagrant local state  — .vagrant/machines/<VM>/utm/id  (UUID file)
+#   5. vagrant global index — ~/.vagrant.d/data/machine-index/index (JSON)
+#
+# Run `mise run utm:diag` at any time to see all 5 sources side-by-side.
+# Run `mise run utm:clean:registry` to reconcile when they get out of sync.
+#
+# ── State restore (utm:state:restore) ─────────────────────────────────────────
+#
+# vagrant local state (#4) gets wiped by utm:clean:registry to force a fresh
+# start. But the UTM VM (#1,#2,#3) still exists. Without the vagrant id file,
+# all vagrant commands fail ("VM not found"). utm:state:restore detects this
+# and rebuilds the id file from utmctl list before any lifecycle task runs.
+# All lifecycle tasks (up/down/destroy/provision/reload) depend on it.
+#
+# ── Registry parsing ──────────────────────────────────────────────────────────
+#
+# The UTM plist contains binary NSData (Bookmark fields) which breaks grep.
+# For the diag (UTM running): use `defaults read com.utmapp.UTM Registry`
+#   — goes through cfprefsd, always current, plain text output.
+# For clean:registry (UTM stopped): use PlistBuddy + strings to strip binary,
+#   then match "UUID = Dict {" lines which are actual registry keys.
+# Never grep PlistBuddy's full Registry dump directly — the Bookmark binary
+#   data contains UUID-like strings that cause false positives.
+#
+# ── Platform handling ─────────────────────────────────────────────────────────
 #   run         = bash script for macOS (and Linux, which also guards via uname check)
-#   run_windows = PowerShell no-op — mise handles the skip at the framework level,
-#                 so bash never needs to be on PATH for Windows to use these tasks
+#   run_windows = PowerShell no-op — mise handles the skip at the framework level
 
 # ── Dependencies ──────────────────────────────────────────────────────────────
 
