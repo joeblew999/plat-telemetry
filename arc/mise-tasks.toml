@@ -37,7 +37,6 @@ go build -o ../.bin/arc${EXE} ./cmd/arc
 
 ["arc:ensure"]
 description = "Ensure arc binary exists"
-run_windows = 'echo SKIP arc: no Windows binary release (Linux-only)'
 run = """
 #!/usr/bin/env bash
 if command -v arc >/dev/null 2>&1; then

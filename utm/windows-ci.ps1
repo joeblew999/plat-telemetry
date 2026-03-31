@@ -44,13 +44,12 @@ Write-Host ""
 # Run CI - use doppler to inject secrets if DOPPLER_TOKEN is available
 # MISE_LOG_LEVEL=error suppresses mise's task-tracing lines ([ci] $ ...)
 # that go to stderr; WinRM treats any stderr as failure.
-$env:MISE_LOG_LEVEL = "error"
 if ($env:DOPPLER_TOKEN) {
     Write-Host "Running 'mise run ci' via doppler (secrets injected)..."
-    & doppler run -- $mise run ci
+    & doppler run -- $mise run ci 2>$null
 } else {
     Write-Host "WARN DOPPLER_TOKEN not set - running without secrets (ci:release will be skipped)"
-    & $mise run ci
+    & $mise run ci 2>$null
 }
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 exit 0
