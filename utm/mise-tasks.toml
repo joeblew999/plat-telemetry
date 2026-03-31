@@ -392,6 +392,16 @@ if [ "$(uname)" != "Darwin" ]; then
   exit 0
 fi
 VM=windows mise run utm:up
+echo "Waiting for WinRM to become available..."
+# utmctl start returns immediately; Windows takes ~2 min to boot to WinRM
+for i in $(seq 1 24); do
+  if vagrant winrm -s powershell -c 'exit 0' windows 2>/dev/null; then
+    echo "OK WinRM ready"
+    break
+  fi
+  echo "  waiting... ($i/24)"
+  sleep 10
+done
 echo "Running 'mise run ci' inside Windows VM..."
 # Use vagrant winrm (not vagrant provision) — vagrant provision destroys the VM
 # on WinRM failure; vagrant winrm just returns exit code with no VM lifecycle cleanup.
