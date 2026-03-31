@@ -125,11 +125,20 @@ if [ -z "${VM:-}" ]; then
   exit 1
 fi
 
-# Check vagrant state first — this is the source of truth for our VM's UUID
+# Check vagrant state first
 UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
 
+if [ -z "$UUID" ]; then
+  # No vagrant state — check if UTM already has a VM with matching name
+  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
+  if [ -n "$UUID" ]; then
+    echo "OK found existing UTM VM uuid=$UUID — restoring vagrant state"
+    mkdir -p ".vagrant/machines/${VM}/utm"
+    echo -n "$UUID" > ".vagrant/machines/${VM}/utm/id"
+  fi
+fi
+
 if [ -n "$UUID" ]; then
-  # We have a UUID — check what UTM thinks about it
   STATUS=$(utmctl status "$UUID" 2>/dev/null || true)
   echo "OK vagrant UUID=$UUID status=$STATUS"
   if [ "$STATUS" = "started" ]; then
@@ -143,7 +152,7 @@ if [ -n "$UUID" ]; then
   fi
 fi
 
-# No vagrant state — create from scratch
+# No vagrant state and no UTM VM — create from scratch
 vagrant up "$VM"
 """
 
