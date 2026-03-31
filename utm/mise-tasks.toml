@@ -274,6 +274,15 @@ if [ -z "${VM:-}" ]; then
   echo "FAIL VM is required — e.g. VM=windows mise run utm:provision"
   exit 1
 fi
+UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
+if [ -z "$UUID" ]; then
+  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
+  if [ -n "$UUID" ]; then
+    mkdir -p ".vagrant/machines/${VM}/utm"
+    echo -n "$UUID" > ".vagrant/machines/${VM}/utm/id"
+    echo "OK restored vagrant state uuid=$UUID"
+  fi
+fi
 vagrant provision "$VM"
 """
 
@@ -292,6 +301,15 @@ fi
 if [ -z "${VM:-}" ]; then
   echo "FAIL VM is required — e.g. VM=alpine mise run utm:reload"
   exit 1
+fi
+UUID=$(cat ".vagrant/machines/${VM}/utm/id" 2>/dev/null || true)
+if [ -z "$UUID" ]; then
+  UUID=$(utmctl list 2>/dev/null | grep "plat-${VM}" | grep -oE '[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}' | head -1 || true)
+  if [ -n "$UUID" ]; then
+    mkdir -p ".vagrant/machines/${VM}/utm"
+    echo -n "$UUID" > ".vagrant/machines/${VM}/utm/id"
+    echo "OK restored vagrant state uuid=$UUID"
+  fi
 fi
 vagrant reload "$VM"
 """
@@ -364,14 +382,9 @@ if [ "$(uname)" != "Darwin" ]; then
 fi
 VM=windows mise run utm:up
 echo "Running 'mise run ci' inside Windows VM..."
-# Use vagrant winrm (not vagrant provision) so vagrant does NOT destroy the VM on WinRM failure.
-# vagrant provision runs cleanup/destroy actions on failure; vagrant winrm just returns exit code.
-# DOPPLER_TOKEN is passed via env var; windows-ci.ps1 reads it from $env:DOPPLER_TOKEN.
-DOPPLER_TOKEN="${DOPPLER_TOKEN:-}"
-vagrant winrm -s powershell -c "
-  Set-Location 'C:\\plat-telemetry\\utm'
-  & .\\windows-ci.ps1
-" windows
+# vagrant provision passes DOPPLER_TOKEN via Vagrantfile env: block
+# windows-ci.ps1 reads $env:DOPPLER_TOKEN to inject secrets via doppler
+vagrant provision windows --provision-with ci
 echo "OK Windows CI passed"
 """
 
