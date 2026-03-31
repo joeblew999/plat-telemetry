@@ -21,6 +21,20 @@ description = "Build arc binary"
 depends = ["arc:src:clone"]
 dir = "arc/.src"
 env = { GOWORK = "off" }
+run_windows = '''
+$arch = & go env GOARCH
+if ($arch -eq "arm64") {
+  Write-Host "SKIP arc:bin:build: DuckDB CGO static libs not available for Windows ARM64 (tracked: https://github.com/duckdb/duckdb-go-bindings/issues/18 PR: https://github.com/duckdb/duckdb/pull/21727)"
+  exit 0
+}
+if (Test-Path "../.bin/arc.exe") { exit 0 }
+New-Item -ItemType Directory -Force -Path "../.bin" | Out-Null
+go build -o "../.bin/arc.exe" ./cmd/arc
+$commit = git rev-parse --short HEAD 2>$null; if (-not $commit) { $commit = "unknown" }
+$hash = (Get-FileHash "../.bin/arc.exe" -Algorithm SHA256).Hash.ToLower()
+$ts = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+"commit: $commit`ntimestamp: $ts`nchecksum: $hash" | Set-Content "../.bin/.version"
+'''
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -37,7 +51,16 @@ go build -o ../.bin/arc${EXE} ./cmd/arc
 
 ["arc:ensure"]
 description = "Ensure arc binary exists"
-run_windows = 'echo SKIP arc: requires DuckDB CGO bindings (not available on Windows ARM64)'
+run_windows = '''
+$arch = & go env GOARCH
+if ($arch -eq "arm64") {
+  Write-Host "SKIP arc:ensure: DuckDB CGO static libs not available for Windows ARM64 (tracked: https://github.com/duckdb/duckdb-go-bindings/issues/18 PR: https://github.com/duckdb/duckdb/pull/21727)"
+  exit 0
+}
+if (Get-Command arc -ErrorAction SilentlyContinue) { Write-Host "OK arc: available on PATH (mise-managed)"; exit 0 }
+if (Test-Path "arc/.bin/arc.exe") { exit 0 }
+mise run arc:bin:build
+'''
 run = """
 #!/usr/bin/env bash
 if command -v arc >/dev/null 2>&1; then
@@ -97,7 +120,16 @@ run = "go test -v ./..."
 
 ["arc:package"]
 description = "Package binary for release"
-run_windows = 'echo SKIP arc: no Windows binary release (Linux-only)'
+run_windows = '''
+$arch = & go env GOARCH
+if ($arch -eq "arm64") {
+  Write-Host "SKIP arc:package: DuckDB CGO static libs not available for Windows ARM64 (tracked: https://github.com/duckdb/duckdb-go-bindings/issues/18 PR: https://github.com/duckdb/duckdb/pull/21727)"
+  exit 0
+}
+$DIST = if ($env:DIST) { $env:DIST } else { $env:DIST_DIR }
+New-Item -ItemType Directory -Force -Path $DIST | Out-Null
+ouch compress -y "arc/.bin/arc.exe" "$DIST/arc-windows-$arch.zip"
+'''
 run = """
 #!/usr/bin/env bash
 set -euo pipefail

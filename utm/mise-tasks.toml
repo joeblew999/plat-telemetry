@@ -74,7 +74,41 @@ if [ -z "${VM:-}" ]; then
   echo "FAIL VM is required — e.g. VM=alpine mise run utm:up"
   exit 1
 fi
-vagrant up "$VM"
+# Import, configure ports/memory/cpu (may fail on start — that is OK for windows)
+vagrant up "$VM" || true
+
+# Windows: patch config.plist before starting — the box ships with virtio-ramfb-gl
+# which crashes UTM on macOS 26+, and vagrant adds VirtFS args we don't need.
+if [ "$VM" = "windows" ]; then
+  UUID=$(cat .vagrant/machines/windows/utm/id 2>/dev/null || true)
+  if [ -z "$UUID" ]; then
+    echo "FAIL could not read windows VM UUID from vagrant state"
+    exit 1
+  fi
+  CONFIG=~/Library/Containers/com.utmapp.UTM/Data/Documents/plat-windows.utm/config.plist
+  if [ ! -f "$CONFIG" ]; then
+    echo "FAIL config.plist not found at $CONFIG"
+    exit 1
+  fi
+  # Find the bundle path from UTM's registry (vagrant creates packer-vm-XXXXX.utm, not plat-windows.utm)
+  PREFS=~/Library/Containers/com.utmapp.UTM/Data/Library/Preferences/com.utmapp.UTM.plist
+  CONFIG=$(plutil -p "$PREFS" 2>/dev/null | grep -A3 "$UUID" | grep '"Path"' | sed 's/.*=> "\\(.*\\)"/\\1/' | head -1)/config.plist
+  if [ ! -f "$CONFIG" ]; then
+    echo "FAIL could not find config.plist for UUID $UUID"
+    exit 1
+  fi
+  echo "Patching Windows VM config at $CONFIG ..."
+  pkill -x UTM 2>/dev/null || true
+  sleep 3
+  plutil -replace Display.0.Hardware -string "virtio-ramfb" "$CONFIG"
+  plutil -remove QEMU.AdditionalArguments "$CONFIG" 2>/dev/null || true
+  echo "OK config patched"
+  open -a UTM
+  sleep 6
+  utmctl start "$UUID"
+  sleep 5
+  utmctl status "$UUID"
+fi
 """
 
 ["utm:down"]
@@ -297,6 +331,56 @@ vagrant destroy -f
 description = "Destroy all VMs and remove all boxes"
 depends = ["utm:clean", "utm:box:clean"]
 run = ""
+
+["utm:clean:registry"]
+description = "Remove all orphaned UTM VM bundles and stale registry entries (use when UTM is in a bad state)"
+run_windows = 'Write-Host "SKIP utm: UTM is macOS-only"'
+run = """
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$(uname)" != "Darwin" ]; then
+  echo "SKIP utm: UTM is macOS-only"
+  exit 0
+fi
+pkill -x UTM 2>/dev/null || true
+sleep 2
+BASE=~/Library/Containers/com.utmapp.UTM/Data/Documents
+PREFS=~/Library/Containers/com.utmapp.UTM/Data/Library/Preferences/com.utmapp.UTM.plist
+VAGRANT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+echo "=== Removing all plat-* and packer-vm-* VM bundles ==="
+for bundle in "$BASE"/plat-windows.utm "$BASE"/plat-ubuntu.utm "$BASE"/plat-debian.utm "$BASE"/plat-alpine.utm "$BASE"/packer-vm-*.utm; do
+  [ -e "$bundle" ] || continue
+  echo "  removing $bundle"
+  rm -rf "$bundle"
+done
+
+echo "=== Clearing UTM registry entries ==="
+if [ -f "$PREFS" ]; then
+  for uuid in $(plutil -p "$PREFS" 2>/dev/null | grep '"UUID"' | sed 's/.*=> "\\(.*\\)"/\\1/' 2>/dev/null || true); do
+    plutil -remove "Registry.$uuid" "$PREFS" 2>/dev/null && echo "  removed $uuid" || true
+  done
+fi
+
+echo "=== Clearing vagrant machine state ==="
+rm -rf "$VAGRANT_DIR/.vagrant/machines"
+
+echo "=== Clearing vagrant global machine index ==="
+INDEX=~/.vagrant.d/data/machine-index/index
+if [ -f "$INDEX" ]; then
+  python3 -c "
+import json
+with open('$INDEX') as f: data = json.load(f)
+to_remove = [k for k,v in data.get('machines',{}).items() if 'plat-telemetry' in v.get('vagrantfile_path','')]
+for k in to_remove: del data['machines'][k]
+with open('$INDEX','w') as f: json.dump(data, f, indent=2)
+import sys; print(f'removed {len(to_remove)} entries', file=sys.stderr)
+"
+fi
+
+open -a UTM
+echo "OK UTM registry cleaned — run VM=windows mise run utm:up to start fresh"
+"""
 
 # ── Packer (custom box build) ─────────────────────────────────────────────────
 
