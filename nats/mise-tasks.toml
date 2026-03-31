@@ -98,10 +98,10 @@ GOARCH="${GOARCH:-$(go env GOARCH)}"
 DIST="${DIST:-$DIST_DIR}"
 EXE=$(go env GOEXE)
 mkdir -p "$DIST"
-if command -v nats-server >/dev/null 2>&1; then
-  BIN_PATH="$(command -v nats-server)"
-  # git bash on Windows strips .exe from command -v output; append it back
-  [ ! -f "$BIN_PATH" ] && BIN_PATH="${BIN_PATH}${EXE}"
+# Use `mise which` to get the actual binary path including .exe on Windows
+# (command -v returns the shim path which may lack .exe)
+if MISE_BIN="$(mise which nats-server 2>/dev/null)" && [ -f "$MISE_BIN" ]; then
+  BIN_PATH="$MISE_BIN"
 elif [ -f "nats/.bin/nats-server${EXE}" ]; then
   BIN_PATH="nats/.bin/nats-server${EXE}"
 else
