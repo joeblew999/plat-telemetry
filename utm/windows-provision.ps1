@@ -106,7 +106,8 @@ if (Test-Path "$repoDir\.git") {
 } else {
     Write-Host "Cloning repository..."
     if (Test-Path $repoDir) { Remove-Item $repoDir -Recurse -Force }
-    git clone $repoUrl $repoDir
+    # git clone writes "Cloning into..." to stderr; suppress to avoid NativeCommandError
+    git clone $repoUrl $repoDir 2>$null
     Set-Location $repoDir
 }
 
@@ -160,8 +161,10 @@ Write-Host "OK auto-restart/sleep/indexer disabled"
 Set-Location $repoDir
 Write-Host "Running mise trust + install..."
 $env:PATH = "C:\ProgramData\mise\bin;C:\Program Files\Git\bin;$env:PATH"
-& "C:\ProgramData\mise\bin\mise.exe" trust
-& "C:\ProgramData\mise\bin\mise.exe" install
+# 2>$null suppresses mise's WARN messages (e.g. mise-shim.exe not found)
+# which go to stderr and cause NativeCommandError under $ErrorActionPreference="Stop"
+& "C:\ProgramData\mise\bin\mise.exe" trust 2>$null
+& "C:\ProgramData\mise\bin\mise.exe" install 2>$null
 Write-Host "mise all tools are installed"
 
 Write-Host ""
