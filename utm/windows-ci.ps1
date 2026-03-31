@@ -1,6 +1,6 @@
 # Windows CI runner for plat-telemetry
 # Called by: mise run utm:windows:ci  (via vagrant provision --provision-with ci)
-# Must NOT be run privileged — mise.exe fails as SYSTEM
+# Must NOT be run privileged - mise.exe fails as SYSTEM
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference    = "SilentlyContinue"
@@ -12,11 +12,11 @@ $repoDir = "C:\plat-telemetry"
 $mise    = "C:\ProgramData\mise\bin\mise.exe"
 
 if (-not (Test-Path $repoDir)) {
-    Write-Error "FAIL repo not found at $repoDir — run 'VM=windows mise run utm:up' first"
+    Write-Error "FAIL repo not found at $repoDir - run 'VM=windows mise run utm:up' first"
     exit 1
 }
 if (-not (Test-Path $mise)) {
-    Write-Error "FAIL mise not found at $mise — re-provision with 'VM=windows mise run utm:provision'"
+    Write-Error "FAIL mise not found at $mise - re-provision with 'VM=windows mise run utm:provision'"
     exit 1
 }
 
@@ -37,11 +37,11 @@ Write-Host ""
 # Re-run install to pick up any new tools added to .mise.toml (e.g. ouch)
 & $mise install
 
-# Run CI — use doppler to inject secrets if DOPPLER_TOKEN is available
+# Run CI - use doppler to inject secrets if DOPPLER_TOKEN is available
 if ($env:DOPPLER_TOKEN) {
     Write-Host "Running 'mise run ci' via doppler (secrets injected)..."
     & doppler run -- $mise run ci
 } else {
-    Write-Host "WARN DOPPLER_TOKEN not set — running without secrets (ci:release will be skipped)"
+    Write-Host "WARN DOPPLER_TOKEN not set - running without secrets (ci:release will be skipped)"
     & $mise run ci
 }

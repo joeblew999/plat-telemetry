@@ -7,16 +7,16 @@ $ProgressPreference    = "SilentlyContinue"  # speeds up Invoke-WebRequest
 
 Write-Host "=== plat-telemetry Windows Provisioner ==="
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# -- Helpers -------------------------------------------------------------------
 
 function Refresh-Path {
     $env:PATH = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
                 [System.Environment]::GetEnvironmentVariable("Path", "User")
 }
 
-# ── 1. Install mise ───────────────────────────────────────────────────────────
+# -- 1. Install mise -----------------------------------------------------------
 
-# ── 1a. Visual C++ 2019+ Redistributable (required by mise and Go) ───────────
+# -- 1a. Visual C++ 2019+ Redistributable (required by mise and Go) -----------
 
 if (-not (Test-Path "C:\Windows\System32\VCRUNTIME140.dll")) {
     Write-Host "Installing Visual C++ 2019+ Redistributable (ARM64)..."
@@ -73,7 +73,7 @@ if (Get-Command mise -ErrorAction SilentlyContinue) {
     Write-Host "OK mise installed: $(& 'C:\ProgramData\mise\bin\mise.exe' --version)"
 }
 
-# ── 2. Install git ────────────────────────────────────────────────────────────
+# -- 2. Install git ------------------------------------------------------------
 
 if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Host "OK git already installed: $(git --version)"
@@ -94,7 +94,7 @@ if (Get-Command git -ErrorAction SilentlyContinue) {
     Write-Host "OK git installed: $(git --version)"
 }
 
-# ── 3. Clone / update repo ────────────────────────────────────────────────────
+# -- 3. Clone / update repo ----------------------------------------------------
 
 $repoDir = "C:\plat-telemetry"
 $repoUrl = "https://github.com/joeblew999/plat-telemetry.git"
@@ -112,7 +112,7 @@ if (Test-Path "$repoDir\.git") {
 
 Write-Host "OK repo at $repoDir"
 
-# ── 3b. Add Git bash to system PATH (required for mise task shebangs) ─────────
+# -- 3b. Add Git bash to system PATH (required for mise task shebangs) ---------
 
 $gitBash = "C:\Program Files\Git\bin"
 if (Test-Path "$gitBash\bash.exe") {
@@ -124,10 +124,10 @@ if (Test-Path "$gitBash\bash.exe") {
     $env:PATH = "$gitBash;$env:PATH"
     Write-Host "OK bash: $(bash --version | Select-Object -First 1)"
 } else {
-    Write-Host "WARN git bash not found at $gitBash — mise tasks with bash shebangs will fail"
+    Write-Host "WARN git bash not found at $gitBash - mise tasks with bash shebangs will fail"
 }
 
-# ── 3c. Create mise wrapper in git-bash usr/bin so bash scripts can find mise ──
+# -- 3c. Create mise wrapper in git-bash usr/bin so bash scripts can find mise --
 # mise tasks use #!/usr/bin/env bash shebangs; the spawned bash process does not
 # inherit the Windows system PATH, so mise.exe must be accessible via a wrapper
 # placed on git-bash's own PATH (C:\Program Files\Git\usr\bin is always on it).
@@ -138,10 +138,10 @@ if (Test-Path $gitUsrBin) {
     [System.IO.File]::WriteAllText("$gitUsrBin\mise", $miseWrapper, [System.Text.Encoding]::ASCII)
     Write-Host "OK mise wrapper created at $gitUsrBin\mise"
 } else {
-    Write-Host "WARN $gitUsrBin not found — bash scripts may not find mise"
+    Write-Host "WARN $gitUsrBin not found - bash scripts may not find mise"
 }
 
-# ── 4. Install mise tools (go, nats-server, pitchfork, gh) ───────────────────
+# -- 4. Install mise tools (go, nats-server, pitchfork, gh) -------------------
 
 Set-Location $repoDir
 Write-Host "Running mise trust + install..."
