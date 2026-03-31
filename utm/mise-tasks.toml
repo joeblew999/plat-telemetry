@@ -148,7 +148,16 @@ if [ -n "$UUID" ]; then
   fi
   if [ "$STATUS" = "stopped" ]; then
     echo "Starting existing VM..."
-    utmctl start "$UUID"
+    # utmctl start can fail with -609 (XPC connection invalid) after a force-kill.
+    # Fix: gracefully quit UTM (not pkill -9 which leaves XPC broken), restart, then start.
+    if ! utmctl start "$UUID" 2>/dev/null; then
+      echo "WARN utmctl start failed (XPC -609), restarting UTM gracefully..."
+      osascript -e 'tell application "UTM" to quit' 2>/dev/null || pkill -x UTM 2>/dev/null || true
+      sleep 5
+      open -a UTM
+      sleep 15
+      utmctl start "$UUID"
+    fi
     exit 0
   fi
 fi
@@ -353,12 +362,16 @@ if [ "$(uname)" != "Darwin" ]; then
   echo "SKIP utm: UTM is macOS-only"
   exit 0
 fi
-vagrant status windows 2>/dev/null | grep -q "running" || vagrant up windows
+VM=windows mise run utm:up
 echo "Running 'mise run ci' inside Windows VM..."
-# Uses windows-ci.ps1 via the 'ci' provisioner (non-privileged, sets PATH for bash)
-# Vagrantfile reads DOPPLER_TOKEN from host env and passes it to the VM
-# Set DOPPLER_TOKEN in .env or run: DOPPLER_TOKEN=$(doppler configs tokens create ci --plain) mise run utm:windows:ci
-vagrant provision windows --provision-with ci
+# Use vagrant winrm (not vagrant provision) so vagrant does NOT destroy the VM on WinRM failure.
+# vagrant provision runs cleanup/destroy actions on failure; vagrant winrm just returns exit code.
+# DOPPLER_TOKEN is passed via env var; windows-ci.ps1 reads it from $env:DOPPLER_TOKEN.
+DOPPLER_TOKEN="${DOPPLER_TOKEN:-}"
+vagrant winrm -s powershell -c "
+  Set-Location 'C:\\plat-telemetry\\utm'
+  & .\\windows-ci.ps1
+" windows
 echo "OK Windows CI passed"
 """
 
@@ -490,15 +503,12 @@ if [ ! -f "$INDEX" ]; then
   echo "  (index not found)"
   exit 0
 fi
-# Use PlistBuddy? No — vagrant index is JSON. Use /usr/bin/python3 if available? No.
-# Read it with bash + grep — extract machine IDs and their vagrantfile_path
-grep -o '"[0-9a-f]*":{[^}]*}' "$INDEX" 2>/dev/null | while IFS= read -r entry; do
-  ID=$(echo "$entry" | grep -o '^"[^"]*"' | tr -d '"')
-  NAME=$(echo "$entry" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
-  VF_PATH=$(echo "$entry" | grep -o '"vagrantfile_path":"[^"]*"' | cut -d'"' -f4)
-  STATE=$(echo "$entry" | grep -o '"state":"[^"]*"' | cut -d'"' -f4)
-  echo "  id=$ID  name=$NAME  state=$STATE  path=$VF_PATH"
-done || echo "  (could not parse index)"
+# Use jq (/usr/bin/jq) — vagrant index is pretty-printed JSON, grep-based parsing breaks on multiline
+if [ ! -s "$INDEX" ] || /usr/bin/jq -e '.machines | length == 0' "$INDEX" >/dev/null 2>&1; then
+  echo "  (index is empty)"
+  exit 0
+fi
+/usr/bin/jq -r '.machines | to_entries[] | "  id=" + .key + "  name=" + (.value.name // "") + "  state=" + (.value.state // "") + "  path=" + (.value.vagrantfile_path // "")' "$INDEX" 2>/dev/null || echo "  (could not parse index)"
 """
 
 ["utm:diag"]
