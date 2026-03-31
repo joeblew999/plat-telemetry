@@ -141,6 +141,20 @@ if (Test-Path $gitUsrBin) {
     Write-Host "WARN $gitUsrBin not found - bash scripts may not find mise"
 }
 
+# -- 3d. Disable auto-restart, sleep, and search indexer ----------------------
+# Prevents Windows Update from rebooting mid-CI and sleep from killing WinRM
+
+$auPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
+New-Item -Path $auPath -Force | Out-Null
+Set-ItemProperty -Path $auPath -Name "NoAutoRebootWithLoggedOnUsers" -Value 1 -Type DWord
+Set-ItemProperty -Path $auPath -Name "AUOptions" -Value 2 -Type DWord
+powercfg /change standby-timeout-ac 0
+powercfg /change hibernate-timeout-ac 0
+powercfg /change monitor-timeout-ac 0
+Stop-Service WSearch -ErrorAction SilentlyContinue
+Set-Service WSearch -StartupType Disabled
+Write-Host "OK auto-restart/sleep/indexer disabled"
+
 # -- 4. Install mise tools (go, nats-server, pitchfork, gh) -------------------
 
 Set-Location $repoDir
@@ -148,6 +162,7 @@ Write-Host "Running mise trust + install..."
 $env:PATH = "C:\ProgramData\mise\bin;C:\Program Files\Git\bin;$env:PATH"
 & "C:\ProgramData\mise\bin\mise.exe" trust
 & "C:\ProgramData\mise\bin\mise.exe" install
+Write-Host "mise all tools are installed"
 
 Write-Host ""
 Write-Host "=== Provisioning complete ==="
