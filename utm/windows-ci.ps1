@@ -28,7 +28,7 @@ Set-Location $repoDir
 Write-Host "Pulling latest repo changes..."
 $ErrorActionPreference = "Continue"
 git reset --hard HEAD
-git pull
+git pull --quiet
 $ErrorActionPreference = "Stop"
 if ($LASTEXITCODE -ne 0) { Write-Error "git pull failed"; exit 1 }
 
