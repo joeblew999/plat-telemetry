@@ -1,9 +1,17 @@
 [
   {
-    "id": 24748220327,
+    "id": 24749083290,
     "name": "CI",
     "status": "in_progress",
     "conclusion": "",
+    "created_at": "2026-04-21T22:12:01Z",
+    "html_url": "https://github.com/joeblew999/plat-telemetry/actions/runs/24749083290"
+  },
+  {
+    "id": 24748220327,
+    "name": "CI",
+    "status": "completed",
+    "conclusion": "success",
     "created_at": "2026-04-21T21:49:48Z",
     "html_url": "https://github.com/joeblew999/plat-telemetry/actions/runs/24748220327"
   },
@@ -70,13 +78,5 @@
     "conclusion": "success",
     "created_at": "2026-04-21T18:04:46Z",
     "html_url": "https://github.com/joeblew999/plat-telemetry/actions/runs/24738390698"
-  },
-  {
-    "id": 24737062362,
-    "name": "CI",
-    "status": "completed",
-    "conclusion": "success",
-    "created_at": "2026-04-21T17:35:09Z",
-    "html_url": "https://github.com/joeblew999/plat-telemetry/actions/runs/24737062362"
   }
 ]
