@@ -1,13 +1,13 @@
 min_version = "2025.1.0"
 
 [settings]
+idiomatic_version_file_enable_tools = ["go"]
 # Skip attestation/SLSA checks — avoids API rate limits in restricted envs.
 # Checksum verification still runs.
 github_attestations = false
 slsa = false
 
 [tools]
-go = "1.26.1"
 "github:jdx/pitchfork" = "latest"
 "github:cli/cli" = "2.83.2"
 "github:nats-io/nats-server" = "2.10.24"

@@ -1,6 +1,6 @@
 module github.com/joeblew99/plat-telemetry/service
 
-go 1.26.1
+go 1.26.0
 
 require github.com/kardianos/service v1.2.4
 

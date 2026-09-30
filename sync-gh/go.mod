@@ -1,6 +1,6 @@
 module github.com/joeblew99/plat-telemetry/sync-gh
 
-go 1.26.1
+go 1.26.0
 
 require (
 	github.com/cbrgm/githubevents/v2 v2.15.1
