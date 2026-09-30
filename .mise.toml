@@ -8,11 +8,11 @@ github_attestations = false
 slsa = false
 
 [tools]
-"github:jdx/pitchfork" = "latest"
+"github:jdx/pitchfork" = "2.28.0"
 "github:cli/cli" = "2.83.2"
 "github:nats-io/nats-server" = "2.10.24"
 "github:Basekick-Labs/arc" = "26.03.2"
-"ubi:ouch-org/ouch" = "latest"  # ubi required: ouch has no arm64 macOS release, ubi picks x86_64 + Rosetta
+"ubi:ouch-org/ouch" = "0.8.3"  # ubi required: ouch has no arm64 macOS release, ubi picks x86_64 + Rosetta
 "github:DopplerHQ/cli" = "3.75.3"
 # packer: macOS-only (UTM box building), install manually if needed: brew install packer
 
